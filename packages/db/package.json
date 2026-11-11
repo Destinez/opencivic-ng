@@ -1,0 +1,28 @@
+{
+  "name": "@opencivic/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrate": "tsx src/cli.ts migrate",
+    "seed": "tsx src/cli.ts seed",
+    "clear-sample": "tsx src/cli.ts clear-sample",
+    "import:inec": "tsx src/cli.ts import"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@opencivic/shared": "workspace:*",
+    "drizzle-orm": "^0.38.3",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

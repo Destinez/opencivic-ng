@@ -1,0 +1,2 @@
+state_code,state_name,lga_code,lga_name,ward_code,ward_name,pu_code,pu_name,address,latitude,longitude,registered_voters
+EXAMPLE-LA,Lagos,EXAMPLE-IKE,Ikeja,EXAMPLE-01,Example Ward,EXAMPLE-LA-IKE-01-001,Example polling unit — delete this row,Sample address only,6.6018,3.3515,500

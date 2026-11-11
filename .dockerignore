@@ -1,0 +1,12 @@
+node_modules
+.next
+dist
+.git
+.data
+uploads
+playwright-report
+test-results
+coverage
+docs/screenshots
+**/*.test.ts
+e2e
