@@ -105,5 +105,5 @@ export type SessionUser = {
   id: string;
   email: string;
   name: string;
-  role: 'observer' | 'reviewer' | 'admin';
+  role: 'observer' | 'reviewer' | 'desk' | 'admin';
 };

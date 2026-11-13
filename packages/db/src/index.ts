@@ -12,3 +12,4 @@ export {
 } from './sample-data';
 export * from './schema';
 export { clearSampleData, seedDatabase } from './seed';
+export { openTestDatabase } from './testing';

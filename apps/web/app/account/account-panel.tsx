@@ -106,7 +106,7 @@ export function AccountPanel() {
           <Link className="button" href="/results/new">
             File an observation
           </Link>
-          {user.role !== 'observer' ? (
+          {['reviewer', 'admin'].includes(user.role) ? (
             <Link className="button secondary" href="/review">
               Open the queue
             </Link>

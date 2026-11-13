@@ -67,7 +67,7 @@ export type SessionUser = {
   id: string;
   email: string;
   name: string;
-  role: 'observer' | 'reviewer' | 'admin';
+  role: 'observer' | 'reviewer' | 'desk' | 'admin';
 };
 
 export type AppDeps = {
@@ -554,7 +554,7 @@ export function createApp(deps: AppDeps) {
   app.get('/v1/review/submissions', async (c) => {
     const user = requireUser(c);
     if (!user) return c.json(errorBody('unauthenticated', 'Sign in required.'), 401);
-    if (user.role === 'observer') {
+    if (user.role !== 'reviewer' && user.role !== 'admin') {
       return c.json(errorBody('forbidden', 'The review queue is for reviewers and admins.'), 403);
     }
     const parsed = reviewQuerySchema.safeParse(queryValues(c.req.queries()));
@@ -566,7 +566,7 @@ export function createApp(deps: AppDeps) {
   app.post('/v1/review/submissions/:id', async (c) => {
     const user = requireUser(c);
     if (!user) return c.json(errorBody('unauthenticated', 'Sign in required.'), 401);
-    if (user.role === 'observer') {
+    if (user.role !== 'reviewer' && user.role !== 'admin') {
       return c.json(errorBody('forbidden', 'The review queue is for reviewers and admins.'), 403);
     }
     const parsed = decisionSchema.safeParse(await readJson(c));

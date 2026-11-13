@@ -58,7 +58,7 @@ export const decisionSchema = z
 
 export const roleChangeSchema = z
   .object({
-    role: z.enum(['observer', 'reviewer', 'admin']),
+    role: z.enum(['observer', 'reviewer', 'desk', 'admin']),
   })
   .strict();
 

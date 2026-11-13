@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { consistencyWarnings } from '@opencivic/shared';
+import { consistencyWarnings, emptyVotes } from '@opencivic/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { AppDb } from './client';
 import { contentDates, contentElections, contentGuidance } from './content';
@@ -13,7 +13,9 @@ import {
   elections,
   guidanceBlocks,
   lgas,
+  observerProfiles,
   pollingUnits,
+  referenceRecords,
   states,
   submissions,
   users,
@@ -25,6 +27,10 @@ type SeedEnv = {
   SEED_OBSERVER_PASSWORD?: string;
   SEED_REVIEWER_EMAIL?: string;
   SEED_REVIEWER_PASSWORD?: string;
+  SEED_REVIEWER2_EMAIL?: string;
+  SEED_REVIEWER2_PASSWORD?: string;
+  SEED_DESK_EMAIL?: string;
+  SEED_DESK_PASSWORD?: string;
   SEED_ADMIN_EMAIL?: string;
   SEED_ADMIN_PASSWORD?: string;
 };
@@ -40,6 +46,16 @@ function account(env: SeedEnv) {
       ...DEMO_ACCOUNTS.reviewer,
       email: env.SEED_REVIEWER_EMAIL || DEMO_ACCOUNTS.reviewer.email,
       password: env.SEED_REVIEWER_PASSWORD || DEMO_ACCOUNTS.reviewer.password,
+    },
+    reviewer2: {
+      ...DEMO_ACCOUNTS.reviewer2,
+      email: env.SEED_REVIEWER2_EMAIL || DEMO_ACCOUNTS.reviewer2.email,
+      password: env.SEED_REVIEWER2_PASSWORD || DEMO_ACCOUNTS.reviewer2.password,
+    },
+    desk: {
+      ...DEMO_ACCOUNTS.desk,
+      email: env.SEED_DESK_EMAIL || DEMO_ACCOUNTS.desk.email,
+      password: env.SEED_DESK_PASSWORD || DEMO_ACCOUNTS.desk.password,
     },
     admin: {
       ...DEMO_ACCOUNTS.admin,
@@ -88,7 +104,7 @@ export async function seedDatabase(
     if (contentDates.length > 0) await tx.insert(electionDates).values(contentDates);
     if (contentGuidance.length > 0) await tx.insert(guidanceBlocks).values(contentGuidance);
 
-    for (const person of [people.observer, people.reviewer, people.admin]) {
+    for (const person of Object.values(people)) {
       const passwordHash = await hashPassword(person.password);
       const row = {
         id: person.id,
@@ -119,6 +135,33 @@ export async function seedDatabase(
   mkdirSync(options.uploadDir, { recursive: true });
   const placeholderPath = join(options.uploadDir, 'sample-sheet-placeholder.png');
   writeFileSync(placeholderPath, sampleSheetPng());
+  await db
+    .insert(observerProfiles)
+    .values({
+      userId: people.observer.id,
+      trustLevel: 1,
+      approvedCount: 6,
+    })
+    .onConflictDoNothing();
+  await db
+    .insert(referenceRecords)
+    .values({
+      id: 'sample-reference-ikeja-gra',
+      electionId: ELECTION_IDS.sample,
+      pollingUnitId: 'sample-ward-lagos-ikeja-gra-pu-3',
+      source: 'sample',
+      sourceUrl: 'https://example.com/sample-reference/ikeja-gra',
+      retrievedAt: new Date('2027-02-20T15:00:00Z'),
+      imagePath: placeholderPath,
+      imageSha256: createHash('sha256').update(sampleSheetPng()).digest('hex'),
+      accreditedVoters: 120,
+      rejectedBallots: 2,
+      partyVotes: { ...emptyVotes(), APC: 142 },
+      declaredTotalVotes: 144,
+      transcribedBy: people.reviewer.id,
+      dataset: 'sample',
+    })
+    .onConflictDoNothing();
 
   for (const submission of DEMO_SUBMISSIONS) {
     const warnings = consistencyWarnings({
@@ -183,6 +226,7 @@ export async function clearSampleData(db: AppDb): Promise<{ pollingUnits: number
     .where(eq(pollingUnits.dataset, 'sample'));
   const ids = sampleUnits.map((unit) => unit.id);
   if (ids.length > 0) {
+    await db.delete(referenceRecords).where(inArray(referenceRecords.pollingUnitId, ids));
     await db.delete(submissions).where(inArray(submissions.pollingUnitId, ids));
     await db.delete(pollingUnits).where(inArray(pollingUnits.id, ids));
   }
@@ -191,3 +235,4 @@ export async function clearSampleData(db: AppDb): Promise<{ pollingUnits: number
   await db.delete(states).where(eq(states.dataset, 'sample'));
   return { pollingUnits: ids.length };
 }
+import { createHash } from 'node:crypto';

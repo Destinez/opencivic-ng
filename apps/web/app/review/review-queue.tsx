@@ -34,7 +34,7 @@ export function ReviewQueue() {
   useEffect(() => {
     void read<SessionUser>('/v1/auth/me').then((result) => {
       setUser(result.ok ? result.data : null);
-      if (result.ok && result.data.role !== 'observer') void load('pending');
+      if (result.ok && ['reviewer', 'admin'].includes(result.data.role)) void load('pending');
     });
   }, [load]);
 
@@ -64,7 +64,7 @@ export function ReviewQueue() {
         Sign in as a reviewer. Demo: chidi.bello@example.com / reviewer-demo-pass.
       </p>
     );
-  if (user.role === 'observer')
+  if (!['reviewer', 'admin'].includes(user.role))
     return <p className="card">Observers can file sheets. Review is a different role.</p>;
 
   return (

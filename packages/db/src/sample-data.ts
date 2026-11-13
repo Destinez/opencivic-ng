@@ -15,6 +15,20 @@ export const DEMO_ACCOUNTS = {
     name: 'Chidi Bello',
     role: 'reviewer',
   },
+  reviewer2: {
+    id: 'user-zainab',
+    email: 'zainab.ali@example.com',
+    password: 'reviewer-two-demo-pass',
+    name: 'Zainab Ali',
+    role: 'reviewer',
+  },
+  desk: {
+    id: 'user-femi',
+    email: 'femi.adeyemi@example.com',
+    password: 'desk-demo-pass',
+    name: 'Femi Adeyemi',
+    role: 'desk',
+  },
   admin: {
     id: 'user-amina',
     email: 'amina.yusuf@example.com',
