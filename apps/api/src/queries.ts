@@ -376,6 +376,14 @@ export async function aggregateElection(
   const found = await db.select().from(elections).where(eq(elections.slug, slug));
   const election = found[0];
   if (!election) return { missing: true };
+  if (level !== 'state') {
+    const parentTable = level === 'lga' ? states : lgas;
+    const parents = await db
+      .select({ id: parentTable.id })
+      .from(parentTable)
+      .where(eq(parentTable.id, parentId ?? ''));
+    if (!parents[0]) return { missing: true };
+  }
   const locations = await db
     .select({
       pollingUnitId: pollingUnits.id,

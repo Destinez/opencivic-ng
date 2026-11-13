@@ -167,6 +167,12 @@ Public reads:
 
 Every geography and tally payload includes `official: false` and a disclaimer string. `parentId` is a state id when `level=lga`, and a local-government id when `level=ward`.
 
+Search text is 2–100 characters. IDs are at most 160 letters, digits, underscores, or hyphens; use the returned ID rather than a `SAMPLE/` code. Pagination accepts whole numbers: `limit=1..100` (default 20) and `offset=0..5000` (default 0). Unknown fields, repeated query parameters, and invalid values return `422`. Omit `parentId` for state aggregates; an unknown election or parent area returns `404`.
+
+Requests share a fixed-window limit of **120 per minute per connection address**, before session lookup or body parsing. Sign-in also allows 10 attempts per 15 minutes, and registration allows 5 per hour, including invalid attempts. Responses expose `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` (seconds); a `429` includes `Retry-After`. Health checks and CORS preflight are exempt. Counters are bounded, expire in memory, and reset on restart. Forwarding headers are ignored, so callers behind the same web proxy share a quota; a public deployment needs an edge limit and a shared store before adding API instances.
+
+JSON bodies are limited to 64 KiB. Multipart observations allow 2,100,000 bytes for the whole request, with a 2,000,000-byte photo limit. Oversized bodies return `413`; malformed JSON returns `400`; unsupported body types return `415`.
+
 Authenticated routes (cookie `oc_session`) cover registration, observations, review, account deletion, and the admin audit log. They are in the same OpenAPI document.
 
 ```bash

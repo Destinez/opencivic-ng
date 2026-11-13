@@ -23,13 +23,14 @@ import {
   roleChangeSchema,
 } from '@opencivic/shared';
 import { and, eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { cors } from 'hono/cors';
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { docsHtml, openApiDocument } from './openapi';
 import {
-  type QueueStatus,
   aggregateElection,
   countActiveAdmins,
   findUserByEmail,
@@ -47,6 +48,17 @@ import {
   recordAudit,
   searchPollingUnits,
 } from './queries';
+import { LOGIN_LIMIT, REGISTER_LIMIT, REQUEST_LIMIT, createRateLimiter } from './rate-limit';
+import {
+  aggregateQuerySchema,
+  auditQuerySchema,
+  electionSlugSchema,
+  emptyQuerySchema,
+  identifierSchema,
+  pollingUnitQuerySchema,
+  queryValues,
+  reviewQuerySchema,
+} from './request-validation';
 
 const COOKIE = 'oc_session';
 const SESSION_SECONDS = 60 * 60 * 24 * 14;
@@ -82,28 +94,34 @@ function timingPad() {
   return dummyHash;
 }
 
-function clientKey(c: { req: { header: (name: string) => string | undefined } }): string {
+function clientKey(c: Context<AppEnv>): string {
   try {
-    const info = getConnInfo(c as never);
+    const info = getConnInfo(c);
     return info.remote.address ?? 'local';
   } catch {
-    return c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
+    return 'local';
   }
 }
 
 export function createApp(deps: AppDeps) {
   const app = new Hono<AppEnv>();
-  const hits = new Map<string, number[]>();
+  const takeRequest = createRateLimiter();
   const limitsOn = deps.rateLimit !== false;
 
-  function limited(key: string, max: number, windowMs: number) {
-    if (!limitsOn) return false;
-    const now = Date.now();
-    const recent = (hits.get(key) ?? []).filter((stamp) => now - stamp < windowMs);
-    if (recent.length >= max) return true;
-    recent.push(now);
-    hits.set(key, recent);
-    return false;
+  function limitRequest(
+    c: Context<AppEnv>,
+    key: string,
+    policy: { max: number; windowMs: number },
+  ) {
+    if (!limitsOn) return;
+    const result = takeRequest(key, policy);
+    c.header('RateLimit-Limit', String(result.limit));
+    c.header('RateLimit-Remaining', String(result.remaining));
+    c.header('RateLimit-Reset', String(result.retryAfter));
+    if (!result.allowed) {
+      c.header('Retry-After', String(result.retryAfter));
+      return c.json(errorBody('rate_limited', 'Too many requests. Try again later.'), 429);
+    }
   }
 
   app.use('*', async (c, next) => {
@@ -125,9 +143,28 @@ export function createApp(deps: AppDeps) {
       credentials: true,
       allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Content-Type'],
+      exposeHeaders: ['Retry-After', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
       maxAge: 600,
     }),
   );
+
+  app.use('*', async (c, next) => {
+    if (c.req.path !== '/health' && c.req.method !== 'OPTIONS') {
+      const response = limitRequest(c, `request:${clientKey(c)}`, REQUEST_LIMIT);
+      if (response) return response;
+    }
+    if (c.req.url.length > 8192) {
+      return c.json(errorBody('uri_too_long', 'The request URL is too long.'), 414);
+    }
+    const multipart =
+      c.req.path === '/v1/submissions' &&
+      c.req.header('content-type')?.toLowerCase().startsWith('multipart/form-data');
+    return bodyLimit({
+      maxSize: multipart ? 2_100_000 : 65_536,
+      onError: (context) =>
+        context.json(errorBody('payload_too_large', 'The request body is too large.'), 413),
+    })(c, next);
+  });
 
   app.use('*', async (c, next) => {
     const token = getCookie(c, COOKIE);
@@ -147,6 +184,7 @@ export function createApp(deps: AppDeps) {
   });
 
   app.onError((error, c) => {
+    if (error instanceof HTTPException) return error.getResponse();
     console.error(error);
     return c.json(errorBody('internal', 'Something went wrong.'), 500);
   });
@@ -183,71 +221,78 @@ export function createApp(deps: AppDeps) {
   app.get('/v1/openapi.json', (c) => c.json(openApiDocument()));
   app.get('/docs', (c) => c.html(docsHtml()));
 
-  app.get('/v1/states', async (c) => c.json(await listStates(deps.db)));
+  app.get('/v1/states', async (c) => {
+    const parsed = emptyQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!parsed.success) return validation(c, parsed.error);
+    return c.json(await listStates(deps.db));
+  });
 
   app.get('/v1/states/:stateId/lgas', async (c) => {
-    const result = await listLgas(deps.db, c.req.param('stateId'));
+    const parsed = identifierSchema.safeParse(c.req.param('stateId'));
+    if (!parsed.success) return validation(c, parsed.error);
+    const query = emptyQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!query.success) return validation(c, query.error);
+    const result = await listLgas(deps.db, parsed.data);
     if (!result) return c.json(errorBody('not_found', 'That state is not in this dataset.'), 404);
     return c.json(result);
   });
 
   app.get('/v1/lgas/:lgaId/wards', async (c) => {
-    const result = await listWards(deps.db, c.req.param('lgaId'));
+    const parsed = identifierSchema.safeParse(c.req.param('lgaId'));
+    if (!parsed.success) return validation(c, parsed.error);
+    const query = emptyQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!query.success) return validation(c, query.error);
+    const result = await listWards(deps.db, parsed.data);
     if (!result)
       return c.json(errorBody('not_found', 'That local government is not in this dataset.'), 404);
     return c.json(result);
   });
 
   app.get('/v1/polling-units', async (c) => {
-    const q = c.req.query('q')?.trim();
-    if (q && q.length < 2) {
-      return c.json(errorBody('validation', 'Search needs at least 2 characters.'), 422);
-    }
-    const limit = clampInt(c.req.query('limit'), 20, 1, 100);
-    const offset = clampInt(c.req.query('offset'), 0, 0, 5000);
-    const result = await searchPollingUnits(deps.db, {
-      q: q || undefined,
-      stateId: c.req.query('stateId') || undefined,
-      lgaId: c.req.query('lgaId') || undefined,
-      wardId: c.req.query('wardId') || undefined,
-      limit,
-      offset,
-    });
+    const parsed = pollingUnitQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!parsed.success) return validation(c, parsed.error);
+    const result = await searchPollingUnits(deps.db, parsed.data);
     return c.json(result);
   });
 
   app.get('/v1/polling-units/:id', async (c) => {
-    const result = await getPollingUnit(deps.db, c.req.param('id'));
+    const parsed = identifierSchema.safeParse(c.req.param('id'));
+    if (!parsed.success) return validation(c, parsed.error);
+    const query = emptyQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!query.success) return validation(c, query.error);
+    const result = await getPollingUnit(deps.db, parsed.data);
     if (!result)
       return c.json(errorBody('not_found', 'That polling unit is not in this dataset.'), 404);
     return c.json(result);
   });
 
-  app.get('/v1/elections', async (c) => c.json(await listElections(deps.db)));
+  app.get('/v1/elections', async (c) => {
+    const parsed = emptyQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!parsed.success) return validation(c, parsed.error);
+    return c.json(await listElections(deps.db));
+  });
 
   app.get('/v1/elections/:slug', async (c) => {
-    const result = await getElection(deps.db, c.req.param('slug'));
+    const parsed = electionSlugSchema.safeParse(c.req.param('slug'));
+    if (!parsed.success) return validation(c, parsed.error);
+    const query = emptyQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!query.success) return validation(c, query.error);
+    const result = await getElection(deps.db, parsed.data);
     if (!result)
       return c.json(errorBody('not_found', 'That election is not in this dataset.'), 404);
     return c.json(result);
   });
 
   app.get('/v1/aggregates', async (c) => {
-    const election = c.req.query('election');
-    const level = c.req.query('level');
-    if (!election || (level !== 'state' && level !== 'lga' && level !== 'ward')) {
-      return c.json(errorBody('validation', 'Pass election and level=state|lga|ward.'), 422);
-    }
-    const parentId = c.req.query('parentId') || undefined;
-    if (level !== 'state' && !parentId) {
-      return c.json(
-        errorBody('validation', 'Pass parentId for a local government or ward rollup.'),
-        422,
-      );
-    }
+    const parsed = aggregateQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!parsed.success) return validation(c, parsed.error);
+    const { election, level, parentId } = parsed.data;
     const result = await aggregateElection(deps.db, election, level, parentId);
     if (result.missing)
-      return c.json(errorBody('not_found', 'That election is not in this dataset.'), 404);
+      return c.json(
+        errorBody('not_found', 'That election or parent area is not in this dataset.'),
+        404,
+      );
     return c.json({
       disclaimer: RESULTS_DISCLAIMER,
       official: false,
@@ -261,12 +306,8 @@ export function createApp(deps: AppDeps) {
   });
 
   app.post('/v1/auth/register', async (c) => {
-    if (limited(`register:${clientKey(c)}`, 5, 60 * 60 * 1000)) {
-      return c.json(
-        errorBody('rate_limited', 'Too many new accounts from this network. Try later.'),
-        429,
-      );
-    }
+    const response = limitRequest(c, `register:${clientKey(c)}`, REGISTER_LIMIT);
+    if (response) return response;
     const parsed = registerSchema.safeParse(await readJson(c));
     if (!parsed.success) return validation(c, parsed.error);
     const email = parsed.data.email.toLowerCase();
@@ -298,9 +339,8 @@ export function createApp(deps: AppDeps) {
   });
 
   app.post('/v1/auth/login', async (c) => {
-    if (limited(`login:${clientKey(c)}`, 10, 15 * 60 * 1000)) {
-      return c.json(errorBody('rate_limited', 'Too many sign-in attempts. Try later.'), 429);
-    }
+    const response = limitRequest(c, `login:${clientKey(c)}`, LOGIN_LIMIT);
+    if (response) return response;
     const parsed = loginSchema.safeParse(await readJson(c));
     if (!parsed.success) return validation(c, parsed.error);
     const user = await findUserByEmail(deps.db, parsed.data.email.toLowerCase());
@@ -376,7 +416,10 @@ export function createApp(deps: AppDeps) {
     if (!user) return c.json(errorBody('unauthenticated', 'Sign in required.'), 401);
     let payload: Record<string, unknown>;
     let photo: File | null = null;
-    const contentType = c.req.header('content-type') ?? '';
+    const contentType = c.req.header('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
+    if (contentType !== 'application/json' && contentType !== 'multipart/form-data') {
+      return c.json(errorBody('unsupported_media', 'Use JSON or a multipart form.'), 415);
+    }
     try {
       if (contentType.includes('multipart/form-data')) {
         const body = await c.req.parseBody({ all: true });
@@ -514,11 +557,9 @@ export function createApp(deps: AppDeps) {
     if (user.role === 'observer') {
       return c.json(errorBody('forbidden', 'The review queue is for reviewers and admins.'), 403);
     }
-    const status = c.req.query('status') ?? 'pending';
-    if (status !== 'pending' && status !== 'approved' && status !== 'flagged') {
-      return c.json(errorBody('validation', 'Status must be pending, approved, or flagged.'), 422);
-    }
-    const data = await listSubmissions(deps.db, { status: status as QueueStatus });
+    const parsed = reviewQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!parsed.success) return validation(c, parsed.error);
+    const data = await listSubmissions(deps.db, parsed.data);
     return c.json({ disclaimer: RESULTS_DISCLAIMER, official: false, data });
   });
 
@@ -574,8 +615,9 @@ export function createApp(deps: AppDeps) {
     if (!user) return c.json(errorBody('unauthenticated', 'Sign in required.'), 401);
     if (user.role !== 'admin')
       return c.json(errorBody('forbidden', 'The audit log is for admins.'), 403);
-    const limit = clampInt(c.req.query('limit'), 50, 1, 200);
-    return c.json({ data: await listAudit(deps.db, limit) });
+    const parsed = auditQuerySchema.safeParse(queryValues(c.req.queries()));
+    if (!parsed.success) return validation(c, parsed.error);
+    return c.json({ data: await listAudit(deps.db, parsed.data.limit) });
   });
 
   app.get('/v1/admin/users', async (c) => {
@@ -622,22 +664,26 @@ export function createApp(deps: AppDeps) {
   return app;
 }
 
-function clampInt(value: string | undefined, fallback: number, min: number, max: number) {
-  if (!value) return fallback;
-  if (!/^\d+$/.test(value)) return fallback;
-  return Math.min(max, Math.max(min, Number(value)));
-}
-
-async function readJson(c: { req: { json: () => Promise<unknown> } }) {
+async function readJson(c: Context<AppEnv>) {
+  if (c.req.header('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
+    throw new HTTPException(415, {
+      res: c.json(errorBody('unsupported_media', 'Use Content-Type: application/json.'), 415),
+    });
+  }
   try {
     return await c.req.json();
   } catch {
-    return {};
+    throw new HTTPException(400, {
+      res: c.json(errorBody('validation', 'The request body must be valid JSON.'), 400),
+    });
   }
 }
 
 function validation(c: { json: (body: unknown, status?: number) => Response }, error: z.ZodError) {
-  return c.json(errorBody('validation', 'Check the form and try again.', error.flatten()), 422);
+  return c.json(
+    errorBody('validation', 'Check the request fields and try again.', error.flatten()),
+    422,
+  );
 }
 
 function sniffImage(bytes: Buffer): 'png' | 'jpg' | 'webp' | null {

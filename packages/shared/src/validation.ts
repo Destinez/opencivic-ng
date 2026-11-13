@@ -28,31 +28,39 @@ export const submissionSchema = z.object({
 
 export type SubmissionInput = z.infer<typeof submissionSchema>;
 
-export const registerSchema = z.object({
-  name: z.string().trim().min(2).max(80),
-  email: z.string().trim().email().max(160),
-  password: z.string().min(10).max(200),
-  ageConfirmed: z.boolean().refine((value) => value, {
-    message: 'You need to confirm that you are 18 or older.',
-  }),
-  consent: z.boolean().refine((value) => value, {
-    message: 'You need to consent to the account being stored.',
-  }),
-});
+export const registerSchema = z
+  .object({
+    name: z.string().trim().min(2).max(80),
+    email: z.string().trim().email().max(160),
+    password: z.string().min(10).max(200),
+    ageConfirmed: z.boolean().refine((value) => value, {
+      message: 'You need to confirm that you are 18 or older.',
+    }),
+    consent: z.boolean().refine((value) => value, {
+      message: 'You need to consent to the account being stored.',
+    }),
+  })
+  .strict();
 
-export const loginSchema = z.object({
-  email: z.string().trim().email().max(160),
-  password: z.string().min(1).max(200),
-});
+export const loginSchema = z
+  .object({
+    email: z.string().trim().email().max(160),
+    password: z.string().min(1).max(200),
+  })
+  .strict();
 
-export const decisionSchema = z.object({
-  decision: z.enum(['approved', 'flagged']),
-  note: z.string().trim().max(500).optional().default(''),
-});
+export const decisionSchema = z
+  .object({
+    decision: z.enum(['approved', 'flagged']),
+    note: z.string().trim().max(500).optional().default(''),
+  })
+  .strict();
 
-export const roleChangeSchema = z.object({
-  role: z.enum(['observer', 'reviewer', 'admin']),
-});
+export const roleChangeSchema = z
+  .object({
+    role: z.enum(['observer', 'reviewer', 'admin']),
+  })
+  .strict();
 
 export function consistencyWarnings(input: {
   accreditedVoters: number;
@@ -87,7 +95,8 @@ function asInt(value: unknown): unknown {
   return value;
 }
 
-export function parseSubmissionBody(input: Record<string, unknown>) {
+export function parseSubmissionBody(value: unknown) {
+  const input = z.record(z.unknown()).parse(value);
   let votes: unknown = input.partyVotes;
   if (typeof votes === 'string') {
     votes = JSON.parse(votes) as unknown;

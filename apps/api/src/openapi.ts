@@ -1,5 +1,18 @@
 import { DATASET_DISCLAIMER, PRODUCT_DISCLAIMER, RESULTS_DISCLAIMER } from '@opencivic/shared';
 
+const identifier = {
+  type: 'string',
+  minLength: 1,
+  maxLength: 160,
+  pattern: '^[a-zA-Z0-9][a-zA-Z0-9_-]*$',
+};
+const electionSlug = {
+  type: 'string',
+  minLength: 1,
+  maxLength: 120,
+  pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$',
+};
+
 const errorSchema = {
   type: 'object',
   properties: {
@@ -17,7 +30,7 @@ const errorSchema = {
 };
 
 export function openApiDocument() {
-  return {
+  const document = {
     openapi: '3.0.3',
     info: {
       title: 'OpenCivic NG API',
@@ -27,7 +40,9 @@ export function openApiDocument() {
         DATASET_DISCLAIMER,
         RESULTS_DISCLAIMER,
         'Public read endpoints never set official to true.',
-        'Write endpoints use the oc_session cookie. They are documented here so the contract is complete, and they are not anonymous.',
+        'Registration and sign-in are public. Other account, submission, review, and admin operations use the oc_session cookie.',
+        'Requests share a limit of 120 per minute per connection address. Sign-in also allows 10 attempts per 15 minutes; registration allows 5 per hour. A 429 response includes Retry-After in seconds. Forwarding headers do not change the client address.',
+        'Query parameters must occur once. Unknown query fields and invalid values return 422. JSON bodies are limited to 64 KiB; multipart observations to 2,100,000 bytes including the photo and fields.',
       ].join(' '),
     },
     servers: [{ url: '/' }],
@@ -71,7 +86,7 @@ export function openApiDocument() {
         get: {
           tags: ['Polling units'],
           summary: 'List local government areas in a state',
-          parameters: [{ name: 'stateId', in: 'path', required: true, schema: { type: 'string' } }],
+          parameters: [{ name: 'stateId', in: 'path', required: true, schema: identifier }],
           responses: { '200': { description: 'LGAs' }, '404': { description: 'Unknown state' } },
         },
       },
@@ -79,7 +94,7 @@ export function openApiDocument() {
         get: {
           tags: ['Polling units'],
           summary: 'List wards in a local government area',
-          parameters: [{ name: 'lgaId', in: 'path', required: true, schema: { type: 'string' } }],
+          parameters: [{ name: 'lgaId', in: 'path', required: true, schema: identifier }],
           responses: { '200': { description: 'Wards' }, '404': { description: 'Unknown LGA' } },
         },
       },
@@ -91,14 +106,23 @@ export function openApiDocument() {
             {
               name: 'q',
               in: 'query',
-              schema: { type: 'string' },
-              description: 'At least 2 characters.',
+              schema: { type: 'string', minLength: 2, maxLength: 100 },
+              description:
+                'Trimmed search text, 2 to 100 characters. Control characters are rejected.',
             },
-            { name: 'stateId', in: 'query', schema: { type: 'string' } },
-            { name: 'lgaId', in: 'query', schema: { type: 'string' } },
-            { name: 'wardId', in: 'query', schema: { type: 'string' } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20, maximum: 100 } },
-            { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
+            { name: 'stateId', in: 'query', schema: identifier },
+            { name: 'lgaId', in: 'query', schema: identifier },
+            { name: 'wardId', in: 'query', schema: identifier },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 },
+            },
+            {
+              name: 'offset',
+              in: 'query',
+              schema: { type: 'integer', default: 0, minimum: 0, maximum: 5000 },
+            },
           ],
           responses: {
             '200': {
@@ -112,7 +136,7 @@ export function openApiDocument() {
         get: {
           tags: ['Polling units'],
           summary: 'One polling unit, with its ward, LGA, and state',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: identifier }],
           responses: {
             '200': { description: 'Polling unit' },
             '404': { description: 'Unknown unit' },
@@ -132,7 +156,7 @@ export function openApiDocument() {
         get: {
           tags: ['Elections'],
           summary: 'One election, with dates and guidance blocks',
-          parameters: [{ name: 'slug', in: 'path', required: true, schema: { type: 'string' } }],
+          parameters: [{ name: 'slug', in: 'path', required: true, schema: electionSlug }],
           responses: {
             '200': {
               description:
@@ -151,7 +175,7 @@ export function openApiDocument() {
               name: 'election',
               in: 'query',
               required: true,
-              schema: { type: 'string' },
+              schema: electionSlug,
               description: 'Election slug.',
             },
             {
@@ -163,8 +187,9 @@ export function openApiDocument() {
             {
               name: 'parentId',
               in: 'query',
-              schema: { type: 'string' },
-              description: 'Required for lga (a state id) and ward (an LGA id).',
+              schema: identifier,
+              description:
+                'Required for lga (a state ID) and ward (an LGA ID). Omit for state totals.',
             },
           ],
           responses: {
@@ -172,7 +197,7 @@ export function openApiDocument() {
               description:
                 'Newest approved submission per polling unit. Pending and flagged rows are excluded. pollingUnitsTotal counts units in this database, not the national INEC list.',
             },
-            '404': { description: 'Unknown election' },
+            '404': { description: 'Unknown election or parent area' },
           },
         },
       },
@@ -180,7 +205,6 @@ export function openApiDocument() {
         post: {
           tags: ['Authenticated'],
           summary: 'Create an observer account',
-          security: [{ sessionCookie: [] }],
           responses: { '201': { description: 'Signed in' }, '422': { description: 'Validation' } },
         },
       },
@@ -286,6 +310,13 @@ export function openApiDocument() {
         get: {
           tags: ['Authenticated'],
           summary: 'Append-only audit log',
+          parameters: [
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
+            },
+          ],
           security: [{ sessionCookie: [] }],
           responses: {
             '200': { description: 'Newest events' },
@@ -304,6 +335,34 @@ export function openApiDocument() {
       },
     },
   };
+  const errorContent = { 'application/json': { schema: errorSchema } };
+  for (const [path, methods] of Object.entries(document.paths)) {
+    if (path === '/health') continue;
+    for (const [method, operation] of Object.entries(methods)) {
+      Object.assign(operation.responses, {
+        '422': { description: 'Invalid request fields', content: errorContent },
+        '414': { description: 'URL exceeds 8 KiB', content: errorContent },
+        '429': {
+          description: 'Request quota exhausted',
+          headers: {
+            'Retry-After': {
+              schema: { type: 'integer', minimum: 1 },
+              description: 'Seconds before retrying',
+            },
+          },
+          content: errorContent,
+        },
+      });
+      if (method === 'post' || method === 'delete') {
+        Object.assign(operation.responses, {
+          '400': { description: 'Unreadable request body', content: errorContent },
+          '413': { description: 'Request body exceeds the size limit', content: errorContent },
+          '415': { description: 'Unsupported content type', content: errorContent },
+        });
+      }
+    }
+  }
+  return document;
 }
 
 function escapeHtml(value: string): string {
