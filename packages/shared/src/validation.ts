@@ -16,11 +16,14 @@ export const partyVotesSchema = z.object({
 });
 
 export const submissionSchema = z.object({
+  clientId: z.string().uuid(),
+  capturedAt: z.string().datetime({ offset: true }),
   electionId: z.string().trim().min(1).max(80),
   pollingUnitId: z.string().trim().min(1).max(160),
   accreditedVoters: count,
   rejectedBallots: count,
   partyVotes: partyVotesSchema,
+  declaredTotalVotes: z.number().int().nonnegative().max(2_000_000).optional(),
   declaration: z.boolean().refine((value) => value, {
     message: 'You need to accept the declaration.',
   }),
@@ -105,11 +108,17 @@ export function parseSubmissionBody(value: unknown) {
   if (declaration === 'true') declaration = true;
   if (declaration === 'false') declaration = false;
   return submissionSchema.parse({
+    clientId: input.clientId,
+    capturedAt: input.capturedAt,
     electionId: input.electionId,
     pollingUnitId: input.pollingUnitId,
     accreditedVoters: asInt(input.accreditedVoters),
     rejectedBallots: asInt(input.rejectedBallots),
     partyVotes: votes,
+    declaredTotalVotes:
+      input.declaredTotalVotes == null || input.declaredTotalVotes === ''
+        ? undefined
+        : asInt(input.declaredTotalVotes),
     declaration,
   });
 }

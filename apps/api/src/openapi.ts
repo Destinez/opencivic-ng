@@ -41,7 +41,7 @@ export function openApiDocument() {
         RESULTS_DISCLAIMER,
         'Public read endpoints never set official to true.',
         'Registration and sign-in are public. Other account, submission, review, and admin operations use the oc_session cookie.',
-        'Requests share a limit of 120 per minute per connection address. Sign-in also allows 10 attempts per 15 minutes; registration allows 5 per hour. A 429 response includes Retry-After in seconds. Forwarding headers do not change the client address.',
+        'Postgres shares request limits across instances: 120 per minute per connection address, sign-in 10 per 15 minutes per address and email, registration 5 per hour, observations 10 per hour per observer and 3 per unit per election. A 429 response includes Retry-After for timed quotas. Forwarding headers do not change the client address.',
         'Query parameters must occur once. Unknown query fields and invalid values return 422. JSON bodies are limited to 64 KiB; multipart observations to 2,100,000 bytes including the photo and fields.',
       ].join(' '),
     },
@@ -244,9 +244,10 @@ export function openApiDocument() {
           tags: ['Authenticated'],
           summary: 'File an unofficial observation',
           description:
-            'JSON or multipart. Multipart may include a photo field (JPEG, PNG, or WebP, up to 2 MB). The photo is not published on the aggregate.',
+            'JSON or multipart, with required clientId (UUID) and capturedAt (ISO timestamp within the election window). Retrying identical figures with the same clientId returns the existing submission. Changed figures under that ID return 409. Send the photo separately to let figures arrive first. Only observers may submit.',
           security: [{ sessionCookie: [] }],
           responses: {
+            '200': { description: 'Existing submission returned for a retry' },
             '201': { description: 'Stored as pending' },
             '409': { description: 'Election is closed' },
           },
@@ -261,6 +262,18 @@ export function openApiDocument() {
         },
       },
       '/v1/submissions/{id}/photo': {
+        post: {
+          tags: ['Authenticated'],
+          summary: 'Attach the observer’s sheet photo',
+          description:
+            'Owner only. Multipart photo, JPEG/PNG/WebP up to 2 MB. The server re-encodes to JPEG, removes EXIF/GPS, and stores SHA-256 and perceptual hashes. Repeating the same image returns 200. Evidence cannot be replaced after attachment or review.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: identifier }],
+          security: [{ sessionCookie: [] }],
+          responses: {
+            '200': { description: 'Photo attached or already present' },
+            '409': { description: 'Different image or review already started' },
+          },
+        },
         get: {
           tags: ['Authenticated'],
           summary: 'Result-sheet photo for the observer or a reviewer',

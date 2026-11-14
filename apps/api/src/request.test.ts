@@ -1,8 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ELECTION_SLUGS, migrateDatabase, openDatabase, seedDatabase } from '@opencivic/db';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import {
+  ELECTION_SLUGS,
+  migrateDatabase,
+  openDatabase,
+  rateLimits,
+  seedDatabase,
+} from '@opencivic/db';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app';
 import { REQUEST_LIMIT } from './rate-limit';
 
@@ -146,10 +152,14 @@ describe('public request validation', () => {
 });
 
 describe('HTTP request limits', () => {
+  beforeEach(async () => {
+    await handle.db.delete(rateLimits);
+  });
   it('shares a public quota across paths and ignores forged forwarding headers', async () => {
     const limited = createApp(deps);
+    const secondInstance = createApp(deps);
     for (let request = 0; request < REQUEST_LIMIT.max; request += 1) {
-      const response = await limited.request('/v1/openapi.json', {
+      const response = await (request % 2 ? secondInstance : limited).request('/v1/openapi.json', {
         headers: { 'x-forwarded-for': `192.0.2.${request}` },
       });
       expect(response.status).toBe(200);
@@ -201,7 +211,8 @@ describe('HTTP request limits', () => {
       const response = await send();
       expect(response.status).toBe(429);
       expect(response.headers.get('ratelimit-limit')).toBe(String(max));
-      expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(reset - 5);
+      expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
+      expect(Number(response.headers.get('retry-after'))).toBeLessThanOrEqual(reset);
     },
   );
 });

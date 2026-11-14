@@ -1,24 +1,19 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { extname, join, resolve, sep } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { extname, resolve, sep } from 'node:path';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import {
   type AppDb,
-  elections,
   hashPassword,
-  pollingUnits,
   sessions,
   submissions,
   users,
   verifyPassword,
 } from '@opencivic/db';
 import {
-  DATASET_DISCLAIMER,
   RESULTS_DISCLAIMER,
-  consistencyWarnings,
   decisionSchema,
   loginSchema,
-  parseSubmissionBody,
   registerSchema,
   roleChangeSchema,
 } from '@opencivic/shared';
@@ -28,7 +23,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
+import { errorBody, readJson, validation } from './http';
 import { docsHtml, openApiDocument } from './openapi';
 import {
   aggregateElection,
@@ -59,6 +54,7 @@ import {
   queryValues,
   reviewQuerySchema,
 } from './request-validation';
+import { mountSubmissionRoutes } from './submissions';
 
 const COOKIE = 'oc_session';
 const SESSION_SECONDS = 60 * 60 * 24 * 14;
@@ -78,11 +74,7 @@ export type AppDeps = {
   rateLimit?: boolean;
 };
 
-type AppEnv = { Variables: { user: SessionUser | null } };
-
-function errorBody(code: string, message: string, details: unknown = null) {
-  return { error: { code, message, details } };
-}
+export type AppEnv = { Variables: { user: SessionUser | null; requestId: string } };
 
 function tokenHash(token: string) {
   return createHash('sha256').update(token).digest('hex');
@@ -105,16 +97,16 @@ function clientKey(c: Context<AppEnv>): string {
 
 export function createApp(deps: AppDeps) {
   const app = new Hono<AppEnv>();
-  const takeRequest = createRateLimiter();
+  const takeRequest = createRateLimiter(deps.db);
   const limitsOn = deps.rateLimit !== false;
 
-  function limitRequest(
+  async function limitRequest(
     c: Context<AppEnv>,
     key: string,
     policy: { max: number; windowMs: number },
   ) {
     if (!limitsOn) return;
-    const result = takeRequest(key, policy);
+    const result = await takeRequest(key, policy);
     c.header('RateLimit-Limit', String(result.limit));
     c.header('RateLimit-Remaining', String(result.remaining));
     c.header('RateLimit-Reset', String(result.retryAfter));
@@ -125,7 +117,27 @@ export function createApp(deps: AppDeps) {
   }
 
   app.use('*', async (c, next) => {
+    const requestId = randomUUID();
+    c.set('requestId', requestId);
+    c.header('X-Request-Id', requestId);
     await next();
+    if (c.res.headers.get('content-type')?.includes('application/json')) {
+      const response = c.res;
+      const decoded = await response.json();
+      const payload =
+        decoded && typeof decoded === 'object' && !Array.isArray(decoded)
+          ? (decoded as Record<string, unknown>)
+          : { data: decoded };
+      c.res = Response.json(
+        {
+          ...payload,
+          official: false,
+          disclaimer: payload.disclaimer ?? RESULTS_DISCLAIMER,
+          requestId,
+        },
+        { status: response.status, headers: response.headers },
+      );
+    }
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('Referrer-Policy', 'no-referrer');
     c.header('X-Frame-Options', 'DENY');
@@ -141,7 +153,7 @@ export function createApp(deps: AppDeps) {
         return deps.webOrigins.includes(origin) ? origin : null;
       },
       credentials: true,
-      allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+      allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Content-Type'],
       exposeHeaders: ['Retry-After', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
       maxAge: 600,
@@ -150,14 +162,16 @@ export function createApp(deps: AppDeps) {
 
   app.use('*', async (c, next) => {
     if (c.req.path !== '/health' && c.req.method !== 'OPTIONS') {
-      const response = limitRequest(c, `request:${clientKey(c)}`, REQUEST_LIMIT);
+      const response = await limitRequest(c, `request:${clientKey(c)}`, REQUEST_LIMIT);
       if (response) return response;
     }
     if (c.req.url.length > 8192) {
       return c.json(errorBody('uri_too_long', 'The request URL is too long.'), 414);
     }
     const multipart =
-      c.req.path === '/v1/submissions' &&
+      (c.req.path === '/v1/submissions' ||
+        /^\/v1\/submissions\/[^/]+\/photo$/.test(c.req.path) ||
+        c.req.path === '/v1/references') &&
       c.req.header('content-type')?.toLowerCase().startsWith('multipart/form-data');
     return bodyLimit({
       maxSize: multipart ? 2_100_000 : 65_536,
@@ -306,7 +320,7 @@ export function createApp(deps: AppDeps) {
   });
 
   app.post('/v1/auth/register', async (c) => {
-    const response = limitRequest(c, `register:${clientKey(c)}`, REGISTER_LIMIT);
+    const response = await limitRequest(c, `register:${clientKey(c)}`, REGISTER_LIMIT);
     if (response) return response;
     const parsed = registerSchema.safeParse(await readJson(c));
     if (!parsed.success) return validation(c, parsed.error);
@@ -339,9 +353,17 @@ export function createApp(deps: AppDeps) {
   });
 
   app.post('/v1/auth/login', async (c) => {
-    const response = limitRequest(c, `login:${clientKey(c)}`, LOGIN_LIMIT);
+    const payload = await readJson(c);
+    const email =
+      typeof payload === 'object' &&
+      payload !== null &&
+      'email' in payload &&
+      typeof payload.email === 'string'
+        ? payload.email.trim().toLowerCase().slice(0, 160)
+        : 'invalid';
+    const response = await limitRequest(c, `login:${clientKey(c)}:${email}`, LOGIN_LIMIT);
     if (response) return response;
-    const parsed = loginSchema.safeParse(await readJson(c));
+    const parsed = loginSchema.safeParse(payload);
     if (!parsed.success) return validation(c, parsed.error);
     const user = await findUserByEmail(deps.db, parsed.data.email.toLowerCase());
     const hash = user?.passwordHash ?? (await timingPad());
@@ -411,111 +433,7 @@ export function createApp(deps: AppDeps) {
     return c.json({ ok: true });
   });
 
-  app.post('/v1/submissions', async (c) => {
-    const user = requireUser(c);
-    if (!user) return c.json(errorBody('unauthenticated', 'Sign in required.'), 401);
-    let payload: Record<string, unknown>;
-    let photo: File | null = null;
-    const contentType = c.req.header('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
-    if (contentType !== 'application/json' && contentType !== 'multipart/form-data') {
-      return c.json(errorBody('unsupported_media', 'Use JSON or a multipart form.'), 415);
-    }
-    try {
-      if (contentType.includes('multipart/form-data')) {
-        const body = await c.req.parseBody({ all: true });
-        const candidate = body.photo;
-        if (candidate instanceof File && candidate.size > 0) photo = candidate;
-        payload = body as Record<string, unknown>;
-      } else {
-        payload = (await c.req.json()) as Record<string, unknown>;
-      }
-    } catch {
-      return c.json(errorBody('validation', 'The request body could not be read.'), 400);
-    }
-    let input: ReturnType<typeof parseSubmissionBody>;
-    try {
-      input = parseSubmissionBody(payload);
-    } catch (error) {
-      if (error instanceof z.ZodError) return validation(c, error);
-      return c.json(errorBody('validation', 'Party votes must be JSON.'), 422);
-    }
-    const electionRows = await deps.db
-      .select()
-      .from(elections)
-      .where(eq(elections.id, input.electionId));
-    const election = electionRows[0];
-    if (!election)
-      return c.json(errorBody('not_found', 'That election is not in this dataset.'), 404);
-    if (!election.acceptsSubmissions) {
-      return c.json(
-        errorBody(
-          'election_closed',
-          'This election is information only. The demonstration poll is the one that accepts observations.',
-        ),
-        409,
-      );
-    }
-    const unitRows = await deps.db
-      .select()
-      .from(pollingUnits)
-      .where(eq(pollingUnits.id, input.pollingUnitId));
-    if (!unitRows[0])
-      return c.json(errorBody('not_found', 'That polling unit is not in this dataset.'), 404);
-
-    let photoPath: string | null = null;
-    if (photo) {
-      if (photo.size > 2_000_000) {
-        return c.json(errorBody('payload_too_large', 'Photos must be 2 MB or smaller.'), 413);
-      }
-      const bytes = Buffer.from(await photo.arrayBuffer());
-      const kind = sniffImage(bytes);
-      if (!kind) {
-        return c.json(errorBody('unsupported_media', 'Use a JPEG, PNG, or WebP image.'), 415);
-      }
-      await mkdir(deps.uploadDir, { recursive: true });
-      photoPath = join(deps.uploadDir, `${randomUUID()}.${kind}`);
-      await writeFile(photoPath, bytes);
-    }
-
-    const warnings = consistencyWarnings(input);
-    const id = randomUUID();
-    await deps.db.insert(submissions).values({
-      id,
-      electionId: election.id,
-      pollingUnitId: input.pollingUnitId,
-      observerId: user.id,
-      accreditedVoters: input.accreditedVoters,
-      rejectedBallots: input.rejectedBallots,
-      partyVotes: input.partyVotes,
-      consistencyWarnings: warnings,
-      photoPath,
-      photoPlaceholder: false,
-      status: 'pending',
-    });
-    await recordAudit(deps.db, {
-      actorId: user.id,
-      action: 'submission.created',
-      entityType: 'submission',
-      entityId: id,
-      metadata: {
-        electionId: election.id,
-        pollingUnitId: input.pollingUnitId,
-        warnings,
-        hasPhoto: Boolean(photoPath),
-      },
-    });
-    return c.json(
-      {
-        id,
-        status: 'pending',
-        warnings,
-        official: false,
-        disclaimer: RESULTS_DISCLAIMER,
-        datasetNotice: DATASET_DISCLAIMER,
-      },
-      201,
-    );
-  });
+  mountSubmissionRoutes(app, deps, takeRequest);
 
   app.get('/v1/submissions/mine', async (c) => {
     const user = requireUser(c);
@@ -662,49 +580,6 @@ export function createApp(deps: AppDeps) {
   });
 
   return app;
-}
-
-async function readJson(c: Context<AppEnv>) {
-  if (c.req.header('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
-    throw new HTTPException(415, {
-      res: c.json(errorBody('unsupported_media', 'Use Content-Type: application/json.'), 415),
-    });
-  }
-  try {
-    return await c.req.json();
-  } catch {
-    throw new HTTPException(400, {
-      res: c.json(errorBody('validation', 'The request body must be valid JSON.'), 400),
-    });
-  }
-}
-
-function validation(c: { json: (body: unknown, status?: number) => Response }, error: z.ZodError) {
-  return c.json(
-    errorBody('validation', 'Check the request fields and try again.', error.flatten()),
-    422,
-  );
-}
-
-function sniffImage(bytes: Buffer): 'png' | 'jpg' | 'webp' | null {
-  if (
-    bytes.length > 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  ) {
-    return 'png';
-  }
-  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg';
-  if (
-    bytes.length > 12 &&
-    bytes.toString('ascii', 0, 4) === 'RIFF' &&
-    bytes.toString('ascii', 8, 12) === 'WEBP'
-  ) {
-    return 'webp';
-  }
-  return null;
 }
 
 function mimeFor(extension: string) {

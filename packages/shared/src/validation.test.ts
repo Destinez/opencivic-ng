@@ -17,6 +17,8 @@ describe('submission validation', () => {
 
   it('accepts integer strings from a multipart form', () => {
     const parsed = parseSubmissionBody({
+      clientId: '9bafc2e1-1188-4f25-a952-9fc482be44aa',
+      capturedAt: '2027-02-20T12:00:00Z',
       electionId: 'sample',
       pollingUnitId: 'pu-1',
       accreditedVoters: '12',

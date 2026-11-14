@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,8 +9,11 @@ import {
   migrateDatabase,
   openDatabase,
   seedDatabase,
+  submissions,
 } from '@opencivic/db';
 import { emptyVotes } from '@opencivic/shared';
+import { eq } from 'drizzle-orm';
+import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type AppDeps, createApp } from './app';
 
@@ -136,6 +140,8 @@ describe.sequential('OpenCivic API', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: observer },
       body: JSON.stringify({
+        clientId: randomUUID(),
+        capturedAt: '2027-02-20T12:00:00Z',
         electionId: ELECTION_IDS.general,
         pollingUnitId: 'sample-ward-lagos-ikeja-gra-pu-3',
         accreditedVoters: 10,
@@ -150,6 +156,8 @@ describe.sequential('OpenCivic API', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: observer },
       body: JSON.stringify({
+        clientId: randomUUID(),
+        capturedAt: '2027-02-20T12:00:00Z',
         electionId: ELECTION_IDS.sample,
         pollingUnitId: 'sample-ward-lagos-ikeja-gra-pu-3',
         accreditedVoters: 10,
@@ -195,10 +203,13 @@ describe.sequential('OpenCivic API', () => {
 
   it('refuses a review of your own observation and a short flag note', async () => {
     const reviewer = await login(DEMO_ACCOUNTS.reviewer.email, DEMO_ACCOUNTS.reviewer.password);
+    const observer = await login(DEMO_ACCOUNTS.observer.email, DEMO_ACCOUNTS.observer.password);
     const created = await app.request('/v1/submissions', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: reviewer },
+      headers: { 'content-type': 'application/json', cookie: observer },
       body: JSON.stringify({
+        clientId: randomUUID(),
+        capturedAt: '2027-02-20T12:00:00Z',
         electionId: ELECTION_IDS.sample,
         pollingUnitId: 'sample-ward-edo-egor-ugbowo-pu-1',
         accreditedVoters: 20,
@@ -207,7 +218,12 @@ describe.sequential('OpenCivic API', () => {
         declaration: true,
       }),
     });
+    expect(created.status).toBe(201);
     const body = (await created.json()) as { id: string };
+    await handle.db
+      .update(submissions)
+      .set({ observerId: DEMO_ACCOUNTS.reviewer.id })
+      .where(eq(submissions.id, body.id));
     const own = await app.request(`/v1/review/submissions/${body.id}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: reviewer },
@@ -215,11 +231,12 @@ describe.sequential('OpenCivic API', () => {
     });
     expect(own.status).toBe(403);
 
-    const observer = await login(DEMO_ACCOUNTS.observer.email, DEMO_ACCOUNTS.observer.password);
     const pending = await app.request('/v1/submissions', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: observer },
       body: JSON.stringify({
+        clientId: randomUUID(),
+        capturedAt: '2027-02-20T12:00:00Z',
         electionId: ELECTION_IDS.sample,
         pollingUnitId: 'sample-ward-edo-egor-ugbowo-pu-2',
         accreditedVoters: 8,
@@ -239,11 +256,14 @@ describe.sequential('OpenCivic API', () => {
 
   it('stores a sheet photo privately and keeps the audit log append-only', async () => {
     const observer = await login(DEMO_ACCOUNTS.observer.email, DEMO_ACCOUNTS.observer.password);
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-      'base64',
-    );
+    const png = await sharp({
+      create: { width: 20, height: 20, channels: 3, background: '#ffffff' },
+    })
+      .png()
+      .toBuffer();
     const form = new FormData();
+    form.set('clientId', randomUUID());
+    form.set('capturedAt', '2027-02-20T12:00:00Z');
     form.set('electionId', ELECTION_IDS.sample);
     form.set('pollingUnitId', 'sample-ward-edo-ikpoba-idogbo-pu-1');
     form.set('accreditedVoters', '15');
@@ -264,7 +284,7 @@ describe.sequential('OpenCivic API', () => {
       headers: { cookie: observer },
     });
     expect(photo.status).toBe(200);
-    expect(photo.headers.get('content-type')).toContain('image/png');
+    expect(photo.headers.get('content-type')).toContain('image/jpeg');
 
     await expect(handle.exec("UPDATE audit_events SET action = 'tamper'")).rejects.toThrow(
       /append-only/,

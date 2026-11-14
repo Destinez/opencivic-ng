@@ -22,6 +22,8 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [clientId] = useState(() => crypto.randomUUID());
+  const [capturedAt, setCapturedAt] = useState('');
 
   useEffect(() => {
     void send<SessionUser>('/v1/auth/me').then((result) => setUser(result.ok ? result.data : null));
@@ -30,6 +32,11 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
       const open = result.data.data.filter((item) => item.acceptsSubmissions);
       setElections(open);
       setElectionId(open[0]?.id ?? '');
+      setCapturedAt(
+        open[0]?.fictional && open[0].heldOn
+          ? `${open[0].heldOn}T12:00`
+          : new Date().toISOString().slice(0, 16),
+      );
     });
   }, []);
 
@@ -70,6 +77,8 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
     for (const party of PARTIES) votes[party.code] = numberFrom(form.get(`vote-${party.code}`));
     votes.others = numberFrom(form.get('vote-others'));
     const body = new FormData();
+    body.set('clientId', clientId);
+    body.set('capturedAt', new Date(capturedAt).toISOString());
     body.set('electionId', String(form.get('electionId') ?? ''));
     body.set('pollingUnitId', unit.id);
     body.set('accreditedVoters', String(form.get('accreditedVoters') ?? ''));
@@ -77,29 +86,48 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
     body.set('partyVotes', JSON.stringify(votes));
     body.set('declaration', form.get('declaration') ? 'true' : 'false');
     const photo = form.get('photo');
-    if (photo instanceof File && photo.size > 0) body.set('photo', photo);
     setPending(true);
-    const result = await send<{ error?: { message: string }; warnings?: string[] }>(
-      '/v1/submissions',
-      {
-        method: 'POST',
-        body,
-      },
-    );
-    setPending(false);
-    if (!result.ok) {
-      setError(result.data.error?.message ?? 'The observation was not saved.');
-      return;
+    try {
+      const result = await send<{ id: string; error?: { message: string }; warnings?: string[] }>(
+        '/v1/submissions',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(Object.fromEntries(body)),
+        },
+      );
+      if (!result.ok) {
+        setError(result.data.error?.message ?? 'The observation was not saved.');
+        return;
+      }
+      if (photo instanceof File && photo.size > 0) {
+        const upload = new FormData();
+        upload.set('photo', photo);
+        const attached = await send<{ error?: { message: string } }>(
+          `/v1/submissions/${result.data.id}/photo`,
+          { method: 'POST', body: upload },
+        );
+        if (!attached.ok) {
+          setError(
+            `Figures saved. ${attached.data.error?.message ?? 'The photo was not sent. Retry to attach it.'}`,
+          );
+          return;
+        }
+      }
+      setDone(
+        result.data.warnings?.length
+          ? `Saved as pending. A reviewer will see this check: ${result.data.warnings.join(' ')}`
+          : 'Saved as pending. It stays unofficial after review.',
+      );
+    } catch {
+      setError('The connection was interrupted. Retry with the same figures to finish sending.');
+    } finally {
+      setPending(false);
     }
-    setDone(
-      result.data.warnings && result.data.warnings.length > 0
-        ? `Saved as pending. A reviewer will see this check: ${result.data.warnings.join(' ')}`
-        : 'Saved as pending. It is not public until a reviewer approves it, and it stays unofficial after that.',
-    );
   }
 
   if (user === undefined) return <p>Checking your account…</p>;
-  if (!user) {
+  if (!user || user.role !== 'observer') {
     return (
       <p className="card">
         Sign in as an observer before filing. Demo observer: ada.okonkwo@example.com /
@@ -134,6 +162,22 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
           <span className="badge fictional">Fictional demonstration. Not an INEC election.</span>
         </p>
       ) : null}
+      <div className="field">
+        <label htmlFor="capturedAt">Capture time</label>
+        <input
+          id="capturedAt"
+          name="capturedAt"
+          type="datetime-local"
+          value={capturedAt}
+          onChange={(event) => setCapturedAt(event.target.value)}
+          required
+          aria-describedby="capture-help"
+        />
+        <p id="capture-help" className="muted">
+          For this fictional poll, use the time shown on the sample sheet. The server also records
+          when it receives the observation.
+        </p>
+      </div>
       <div className="field">
         <label htmlFor="unit-search">Polling unit</label>
         <input
@@ -176,13 +220,26 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
       ) : null}
       <div className="field">
         <label htmlFor="accreditedVoters">Accredited voters</label>
-        <input id="accreditedVoters" name="accreditedVoters" inputMode="numeric" required />
+        <input
+          id="accreditedVoters"
+          name="accreditedVoters"
+          type="number"
+          min={0}
+          max={200000}
+          step={1}
+          inputMode="numeric"
+          required
+        />
       </div>
       <div className="field">
         <label htmlFor="rejectedBallots">Rejected ballots</label>
         <input
           id="rejectedBallots"
           name="rejectedBallots"
+          type="number"
+          min={0}
+          max={200000}
+          step={1}
           inputMode="numeric"
           defaultValue="0"
           required
@@ -202,6 +259,10 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
             <input
               id={`vote-${party.code}`}
               name={`vote-${party.code}`}
+              type="number"
+              min={0}
+              max={200000}
+              step={1}
               inputMode="numeric"
               defaultValue="0"
             />
@@ -209,7 +270,16 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
         ))}
         <div className="field">
           <label htmlFor="vote-others">Other parties, combined</label>
-          <input id="vote-others" name="vote-others" inputMode="numeric" defaultValue="0" />
+          <input
+            id="vote-others"
+            name="vote-others"
+            type="number"
+            min={0}
+            max={200000}
+            step={1}
+            inputMode="numeric"
+            defaultValue="0"
+          />
         </div>
       </fieldset>
       <div className="field">
@@ -239,5 +309,5 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
 
 function numberFrom(value: FormDataEntryValue | null) {
   const parsed = Number(typeof value === 'string' ? value : 0);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+  return parsed;
 }
