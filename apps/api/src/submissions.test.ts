@@ -13,6 +13,16 @@ describe('submission retries and photos', () => {
     try {
       const cookie = await fixture.login();
       const body = submissionBody();
+      const wrongOwner = await fixture.app.request('/v1/submissions', {
+        method: 'POST',
+        headers: {
+          cookie,
+          'content-type': 'application/json',
+          'x-observer-id': 'another-observer',
+        },
+        body: JSON.stringify(body),
+      });
+      expect(wrongOwner.status).toBe(403);
       const responses = await Promise.all(
         Array.from({ length: 5 }, () =>
           fixture.app.request('/v1/submissions', {

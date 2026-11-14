@@ -493,6 +493,10 @@ export async function listSubmissions(
     .orderBy(desc(submissions.createdAt));
   return rows.map((row) => ({
     id: row.submission.id,
+    clientId: row.submission.clientId,
+    capturedAt: row.submission.capturedAt?.toISOString() ?? null,
+    receivedAt: row.submission.receivedAt.toISOString(),
+    photoSha256: row.submission.photoSha256,
     status: row.submission.status,
     createdAt: row.submission.createdAt.toISOString(),
     accreditedVoters: row.submission.accreditedVoters,

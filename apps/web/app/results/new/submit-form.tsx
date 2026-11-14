@@ -1,7 +1,11 @@
 'use client';
 
+import { OutboxPanel } from '@/components/outbox-panel';
+import { compressPhoto } from '@/lib/compress-photo';
+import { getMeta, saveDraft, setMeta } from '@/lib/outbox';
 import type { ElectionSummary, PollingUnit, SessionUser } from '@/lib/types';
 import { PARTIES, emptyVotes } from '@opencivic/shared/parties';
+import { parseSubmissionBody } from '@opencivic/shared/validation';
 import { useEffect, useState } from 'react';
 
 type ApiResult<T> = { ok: boolean; status: number; data: T };
@@ -22,14 +26,33 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [clientId] = useState(() => crypto.randomUUID());
+  const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const [capturedAt, setCapturedAt] = useState('');
 
   useEffect(() => {
-    void send<SessionUser>('/v1/auth/me').then((result) => setUser(result.ok ? result.data : null));
-    void send<{ data: ElectionSummary[] }>('/v1/elections').then((result) => {
-      if (!result.ok) return;
-      const open = result.data.data.filter((item) => item.acceptsSubmissions);
+    void (async () => {
+      try {
+        const result = await send<SessionUser>('/v1/auth/me');
+        setUser(result.ok ? result.data : null);
+        await setMeta('activeUser', result.ok ? result.data : undefined);
+      } catch {
+        setUser((await getMeta<SessionUser>('activeUser')) ?? null);
+      }
+    })();
+    void (async () => {
+      let data: ElectionSummary[] = [];
+      try {
+        const result = await send<{ data: ElectionSummary[] }>('/v1/elections');
+        if (result.ok) {
+          data = result.data.data;
+          await setMeta('elections', data);
+        } else {
+          data = (await getMeta<ElectionSummary[]>('elections')) ?? [];
+        }
+      } catch {
+        data = (await getMeta<ElectionSummary[]>('elections')) ?? [];
+      }
+      const open = data.filter((item) => item.acceptsSubmissions);
       setElections(open);
       setElectionId(open[0]?.id ?? '');
       setCapturedAt(
@@ -37,16 +60,28 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
           ? `${open[0].heldOn}T12:00`
           : new Date().toISOString().slice(0, 16),
       );
-    });
+    })();
   }, []);
 
   useEffect(() => {
-    if (!initialUnitId) return;
-    void send<{ data: PollingUnit }>(`/v1/polling-units/${encodeURIComponent(initialUnitId)}`).then(
-      (result) => {
-        if (result.ok) setUnit(result.data.data);
-      },
-    );
+    void (async () => {
+      const cached = (await getMeta<PollingUnit[]>('units')) ?? [];
+      try {
+        if (initialUnitId) {
+          const result = await send<{ data: PollingUnit }>(
+            `/v1/polling-units/${encodeURIComponent(initialUnitId)}`,
+          );
+          if (result.ok) {
+            setUnit(result.data.data);
+            await rememberUnit(result.data.data);
+            return;
+          }
+        }
+      } catch {
+        /* Use the selected unit stored on this device. */
+      }
+      setUnit(cached.find((item) => item.id === initialUnitId) ?? cached[0] ?? null);
+    })();
   }, [initialUnitId]);
 
   useEffect(() => {
@@ -57,9 +92,26 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
     const handle = setTimeout(() => {
       void send<{ data: PollingUnit[] }>(
         `/v1/polling-units?q=${encodeURIComponent(query.trim())}&limit=8`,
-      ).then((result) => {
-        if (result.ok) setMatches(result.data.data);
-      });
+      )
+        .then(async (result) => {
+          if (result.ok) setMatches(result.data.data);
+          else {
+            const cached = (await getMeta<PollingUnit[]>('units')) ?? [];
+            setMatches(
+              cached.filter((item) =>
+                `${item.name} ${item.code}`.toLowerCase().includes(query.toLowerCase()),
+              ),
+            );
+          }
+        })
+        .catch(async () => {
+          const cached = (await getMeta<PollingUnit[]>('units')) ?? [];
+          setMatches(
+            cached.filter((item) =>
+              `${item.name} ${item.code}`.toLowerCase().includes(query.toLowerCase()),
+            ),
+          );
+        });
     }, 250);
     return () => clearTimeout(handle);
   }, [query]);
@@ -86,41 +138,47 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
     body.set('partyVotes', JSON.stringify(votes));
     body.set('declaration', form.get('declaration') ? 'true' : 'false');
     const photo = form.get('photo');
+    if (!user) return;
+    const formElement = event.currentTarget;
     setPending(true);
     try {
-      const result = await send<{ id: string; error?: { message: string }; warnings?: string[] }>(
-        '/v1/submissions',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(Object.fromEntries(body)),
-        },
-      );
-      if (!result.ok) {
-        setError(result.data.error?.message ?? 'The observation was not saved.');
-        return;
+      const input = parseSubmissionBody(Object.fromEntries(body));
+      if (unit.registeredVoters != null && input.accreditedVoters > unit.registeredVoters)
+        throw new Error('Accredited voters cannot exceed the loaded register count.');
+      const image = photo instanceof File && photo.size > 0 ? await compressPhoto(photo) : null;
+      await saveDraft({
+        clientId,
+        ownerId: user.id,
+        unitLabel: unit.name,
+        input,
+        photo: image,
+        sourceBytes: photo instanceof File ? photo.size : 0,
+        createdAt: Date.now(),
+        state: 'saved',
+        phase: 'figures',
+        attempts: 0,
+        nextAttemptAt: 0,
+      });
+      setDone('Saved on this phone. It will send when a connection is available.');
+      setClientId(crypto.randomUUID());
+      formElement.reset();
+      window.dispatchEvent(new Event('opencivic-outbox'));
+      if ('serviceWorker' in navigator) {
+        void navigator.serviceWorker.ready
+          .then((registration) => {
+            const background = registration as ServiceWorkerRegistration & {
+              sync?: { register: (tag: string) => Promise<void> };
+            };
+            return background.sync?.register('opencivic-outbox');
+          })
+          .catch(() => undefined);
       }
-      if (photo instanceof File && photo.size > 0) {
-        const upload = new FormData();
-        upload.set('photo', photo);
-        const attached = await send<{ error?: { message: string } }>(
-          `/v1/submissions/${result.data.id}/photo`,
-          { method: 'POST', body: upload },
-        );
-        if (!attached.ok) {
-          setError(
-            `Figures saved. ${attached.data.error?.message ?? 'The photo was not sent. Retry to attach it.'}`,
-          );
-          return;
-        }
-      }
-      setDone(
-        result.data.warnings?.length
-          ? `Saved as pending. A reviewer will see this check: ${result.data.warnings.join(' ')}`
-          : 'Saved as pending. It stays unofficial after review.',
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'The observation could not be saved on this device.',
       );
-    } catch {
-      setError('The connection was interrupted. Retry with the same figures to finish sending.');
     } finally {
       setPending(false);
     }
@@ -137,128 +195,144 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
   }
 
   return (
-    <form className="card" onSubmit={onSubmit}>
-      <p>
-        Signed in as {user.name} ({user.role}).
-      </p>
-      {elections.length === 0 ? <p>No election is accepting observations.</p> : null}
-      <div className="field">
-        <label htmlFor="electionId">Election</label>
-        <select
-          id="electionId"
-          name="electionId"
-          value={electionId}
-          onChange={(event) => setElectionId(event.target.value)}
-        >
-          {elections.map((election) => (
-            <option key={election.id} value={election.id}>
-              {election.name}
-            </option>
+    <>
+      <form className="card" onSubmit={onSubmit}>
+        <p>
+          Signed in as {user.name} ({user.role}).
+        </p>
+        {elections.length === 0 ? <p>No election is accepting observations.</p> : null}
+        <div className="field">
+          <label htmlFor="electionId">Election</label>
+          <select
+            id="electionId"
+            name="electionId"
+            value={electionId}
+            onChange={(event) => setElectionId(event.target.value)}
+          >
+            {elections.map((election) => (
+              <option key={election.id} value={election.id}>
+                {election.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {elections.find((item) => item.id === electionId)?.fictional ? (
+          <p>
+            <span className="badge fictional">Fictional demonstration. Not an INEC election.</span>
+          </p>
+        ) : null}
+        <div className="field">
+          <label htmlFor="capturedAt">Capture time</label>
+          <input
+            id="capturedAt"
+            name="capturedAt"
+            type="datetime-local"
+            value={capturedAt}
+            onChange={(event) => setCapturedAt(event.target.value)}
+            required
+            aria-describedby="capture-help"
+          />
+          <p id="capture-help" className="muted">
+            For this fictional poll, use the time shown on the sample sheet. The server also records
+            when it receives the observation.
+          </p>
+        </div>
+        <div className="field">
+          <label htmlFor="unit-search">Polling unit</label>
+          <input
+            id="unit-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by name or SAMPLE code"
+            autoComplete="off"
+          />
+        </div>
+        {matches.length > 0 ? (
+          <ul className="place-list">
+            {matches.map((match) => (
+              <li key={match.id}>
+                <button
+                  type="button"
+                  className="place secondary"
+                  onClick={() => {
+                    setUnit(match);
+                    void rememberUnit(match);
+                    setMatches([]);
+                    setQuery(match.name);
+                  }}
+                >
+                  <span>
+                    {match.name}
+                    <br />
+                    {match.code}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {unit ? (
+          <p>
+            <span className="badge sample">{unit.datasetNotice}</span>
+            <br />
+            Selected: {unit.name} ({unit.code})
+          </p>
+        ) : null}
+        <div className="field">
+          <label htmlFor="accreditedVoters">Accredited voters</label>
+          <input
+            id="accreditedVoters"
+            name="accreditedVoters"
+            type="number"
+            min={0}
+            max={200000}
+            step={1}
+            inputMode="numeric"
+            required
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="rejectedBallots">Rejected ballots</label>
+          <input
+            id="rejectedBallots"
+            name="rejectedBallots"
+            type="number"
+            min={0}
+            max={200000}
+            step={1}
+            inputMode="numeric"
+            defaultValue="0"
+            required
+          />
+        </div>
+        <fieldset>
+          <legend>Votes, alphabetical by party code</legend>
+          <p>
+            This is not ballot order and it is not an endorsement. Put every other party on the last
+            line.
+          </p>
+          {PARTIES.map((party) => (
+            <div className="field" key={party.code}>
+              <label htmlFor={`vote-${party.code}`}>
+                {party.name} ({party.code})
+              </label>
+              <input
+                id={`vote-${party.code}`}
+                name={`vote-${party.code}`}
+                type="number"
+                min={0}
+                max={200000}
+                step={1}
+                inputMode="numeric"
+                defaultValue="0"
+              />
+            </div>
           ))}
-        </select>
-      </div>
-      {elections.find((item) => item.id === electionId)?.fictional ? (
-        <p>
-          <span className="badge fictional">Fictional demonstration. Not an INEC election.</span>
-        </p>
-      ) : null}
-      <div className="field">
-        <label htmlFor="capturedAt">Capture time</label>
-        <input
-          id="capturedAt"
-          name="capturedAt"
-          type="datetime-local"
-          value={capturedAt}
-          onChange={(event) => setCapturedAt(event.target.value)}
-          required
-          aria-describedby="capture-help"
-        />
-        <p id="capture-help" className="muted">
-          For this fictional poll, use the time shown on the sample sheet. The server also records
-          when it receives the observation.
-        </p>
-      </div>
-      <div className="field">
-        <label htmlFor="unit-search">Polling unit</label>
-        <input
-          id="unit-search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name or SAMPLE code"
-          autoComplete="off"
-        />
-      </div>
-      {matches.length > 0 ? (
-        <ul className="place-list">
-          {matches.map((match) => (
-            <li key={match.id}>
-              <button
-                type="button"
-                className="place secondary"
-                onClick={() => {
-                  setUnit(match);
-                  setMatches([]);
-                  setQuery(match.name);
-                }}
-              >
-                <span>
-                  {match.name}
-                  <br />
-                  {match.code}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {unit ? (
-        <p>
-          <span className="badge sample">{unit.datasetNotice}</span>
-          <br />
-          Selected: {unit.name} ({unit.code})
-        </p>
-      ) : null}
-      <div className="field">
-        <label htmlFor="accreditedVoters">Accredited voters</label>
-        <input
-          id="accreditedVoters"
-          name="accreditedVoters"
-          type="number"
-          min={0}
-          max={200000}
-          step={1}
-          inputMode="numeric"
-          required
-        />
-      </div>
-      <div className="field">
-        <label htmlFor="rejectedBallots">Rejected ballots</label>
-        <input
-          id="rejectedBallots"
-          name="rejectedBallots"
-          type="number"
-          min={0}
-          max={200000}
-          step={1}
-          inputMode="numeric"
-          defaultValue="0"
-          required
-        />
-      </div>
-      <fieldset>
-        <legend>Votes, alphabetical by party code</legend>
-        <p>
-          This is not ballot order and it is not an endorsement. Put every other party on the last
-          line.
-        </p>
-        {PARTIES.map((party) => (
-          <div className="field" key={party.code}>
-            <label htmlFor={`vote-${party.code}`}>
-              {party.name} ({party.code})
-            </label>
+          <div className="field">
+            <label htmlFor="vote-others">Other parties, combined</label>
             <input
-              id={`vote-${party.code}`}
-              name={`vote-${party.code}`}
+              id="vote-others"
+              name="vote-others"
               type="number"
               min={0}
               max={200000}
@@ -267,47 +341,40 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
               defaultValue="0"
             />
           </div>
-        ))}
+        </fieldset>
         <div className="field">
-          <label htmlFor="vote-others">Other parties, combined</label>
-          <input
-            id="vote-others"
-            name="vote-others"
-            type="number"
-            min={0}
-            max={200000}
-            step={1}
-            inputMode="numeric"
-            defaultValue="0"
-          />
+          <label htmlFor="photo">Photo of the result sheet, optional</label>
+          <input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
         </div>
-      </fieldset>
-      <div className="field">
-        <label htmlFor="photo">Photo of the result sheet, optional</label>
-        <input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
-      </div>
-      <label className="check">
-        <input name="declaration" type="checkbox" required />
-        <span>
-          I observed these figures myself. I will not upload voter-register pages, faces, or other
-          people’s personal data. I understand this publication is unofficial and not an INEC
-          result.
-        </span>
-      </label>
-      {error ? (
-        <p className="alert" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {done ? <output className="status">{done}</output> : null}
-      <button type="submit" disabled={pending || !electionId}>
-        {pending ? 'Saving…' : 'Submit observation'}
-      </button>
-    </form>
+        <label className="check">
+          <input name="declaration" type="checkbox" required />
+          <span>
+            I observed these figures myself. I will not upload voter-register pages, faces, or other
+            people’s personal data. I understand this publication is unofficial and not an INEC
+            result.
+          </span>
+        </label>
+        {error ? (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {done ? <output className="status">{done}</output> : null}
+        <button type="submit" disabled={pending || !electionId}>
+          {pending ? 'Saving…' : 'Save observation'}
+        </button>
+      </form>
+      <OutboxPanel ownerId={user.id} />
+    </>
   );
 }
 
 function numberFrom(value: FormDataEntryValue | null) {
   const parsed = Number(typeof value === 'string' ? value : 0);
   return parsed;
+}
+
+async function rememberUnit(unit: PollingUnit) {
+  const stored = (await getMeta<PollingUnit[]>('units')) ?? [];
+  await setMeta('units', [unit, ...stored.filter((item) => item.id !== unit.id)].slice(0, 200));
 }

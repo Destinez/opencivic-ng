@@ -47,6 +47,9 @@ function matchesRetry(row: typeof submissions.$inferSelect, input: SubmissionInp
 export function mountSubmissionRoutes(app: Hono<AppEnv>, deps: AppDeps, takeRequest: TakeRequest) {
   app.post('/v1/submissions', async (c) => {
     const user = requireRole(c, ['observer']);
+    const owner = c.req.header('x-observer-id');
+    if (owner && owner !== user.id)
+      reject('forbidden', 'Sign in with the account that saved this observation.', 403);
     let payload: unknown;
     let photo: File | null = null;
     if (c.req.header('content-type')?.toLowerCase().startsWith('multipart/form-data')) {

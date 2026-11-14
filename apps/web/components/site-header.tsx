@@ -17,7 +17,7 @@ export function SiteHeader() {
   return (
     <header className="site-header">
       <div className="shell header-row">
-        <Link className="wordmark" href="/">
+        <Link className="wordmark" href="/" prefetch={false}>
           OpenCivic <span>NG</span>
         </Link>
         <nav className="nav" aria-label="Primary">
@@ -26,7 +26,12 @@ export function SiteHeader() {
               ? path === link.href
               : path === link.href || path.startsWith(`${link.href}/`);
             return (
-              <Link key={link.href} href={link.href} aria-current={current ? 'page' : undefined}>
+              <Link
+                key={link.href}
+                href={link.href}
+                prefetch={false}
+                aria-current={current ? 'page' : undefined}
+              >
                 {link.label}
               </Link>
             );

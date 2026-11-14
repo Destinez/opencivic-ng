@@ -1,5 +1,6 @@
 'use client';
 
+import { setMeta } from '@/lib/outbox';
 import type { SessionUser, SubmissionCard } from '@/lib/types';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
@@ -28,11 +29,13 @@ export function AccountPanel() {
   const refresh = useCallback(async () => {
     const me = await send<SessionUser>('/v1/auth/me');
     if (!me.ok) {
+      await setMeta('activeUser', undefined).catch(() => undefined);
       setUser(null);
       setMine([]);
       return;
     }
     setUser(me.data);
+    await setMeta('activeUser', me.data).catch(() => undefined);
     const submissions = await send<{ data: SubmissionCard[] }>('/v1/submissions/mine');
     if (submissions.ok) setMine(submissions.data.data);
   }, []);
@@ -53,6 +56,7 @@ export function AccountPanel() {
       setError(result.data.error?.message ?? 'Sign-in failed.');
       return;
     }
+    await setMeta('syncPaused', false).catch(() => undefined);
     await refresh();
   }
 
@@ -78,6 +82,8 @@ export function AccountPanel() {
   }
 
   async function signOut() {
+    await setMeta('syncPaused', true).catch(() => undefined);
+    await setMeta('activeUser', undefined).catch(() => undefined);
     await send('/v1/auth/logout', { method: 'POST', body: '{}' });
     setInfo('Signed out.');
     await refresh();
@@ -90,6 +96,7 @@ export function AccountPanel() {
       return;
     }
     setInfo('The account was deleted. The audit log keeps an opaque id and drops the email.');
+    await setMeta('activeUser', undefined).catch(() => undefined);
     await refresh();
   }
 

@@ -5,8 +5,12 @@ export function SiteFooter() {
     <footer className="site-footer">
       <div className="shell">
         <nav aria-label="About">
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/developers">API</Link>
+          <Link href="/privacy" prefetch={false}>
+            Privacy
+          </Link>
+          <Link href="/developers" prefetch={false}>
+            API
+          </Link>
           <a href="https://www.inecnigeria.org/">INEC</a>
           <a href="https://cvr.inecnigeria.org/pu">INEC polling-unit portal</a>
         </nav>

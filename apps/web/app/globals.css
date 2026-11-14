@@ -19,6 +19,23 @@
   color-scheme: light;
 }
 
+.observer-flow {
+  --font-sans: system-ui, sans-serif;
+  --font-display: system-ui, sans-serif;
+  font-family: var(--font-sans);
+}
+.outbox {
+  margin-top: 1.5rem;
+}
+.outbox-list {
+  padding: 0;
+  list-style: none;
+}
+.outbox-list li {
+  border-top: 1px solid var(--line);
+  padding: 1rem 0;
+}
+
 * {
   box-sizing: border-box;
 }

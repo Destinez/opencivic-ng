@@ -1,10 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const databaseUrl = process.env.DATABASE_URL ?? 'pglite:./.data/e2e';
+process.env.E2E_RUN_ID ??= randomUUID().replaceAll('-', '');
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 60_000,
+  timeout: 90_000,
+  workers: 1,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
@@ -13,7 +15,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
-    { name: 'smoke', testMatch: /smoke\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'smoke', testIgnore: /screenshots\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
     {
       name: 'screenshots',
       testMatch: /screenshots\.spec\.ts/,
@@ -22,12 +24,14 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm --filter @opencivic/api exec tsx src/index.ts',
+      command: 'pnpm --filter @opencivic/api exec tsx ../../scripts/e2e-api.mts',
       url: 'http://localhost:4000/health',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
       timeout: 120_000,
       env: {
         DATABASE_URL: databaseUrl,
+        E2E_SCHEMA: `e2e_${process.env.E2E_RUN_ID}`,
         SEED_ON_BOOT: 'true',
         WEB_ORIGINS: 'http://localhost:3000',
         UPLOAD_DIR: './.data/uploads',
@@ -35,11 +39,9 @@ export default defineConfig({
       },
     },
     {
-      command: process.env.CI
-        ? 'pnpm --filter @opencivic/web start'
-        : 'pnpm --filter @opencivic/web dev',
+      command: 'pnpm --filter @opencivic/web start',
       url: 'http://localhost:3000',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 180_000,
       env: {
         API_INTERNAL_URL: 'http://localhost:4000',
@@ -48,3 +50,4 @@ export default defineConfig({
     },
   ],
 });
+import { randomUUID } from 'node:crypto';
