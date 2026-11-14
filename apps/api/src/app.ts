@@ -2,22 +2,14 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { getConnInfo } from '@hono/node-server/conninfo';
-import {
-  type AppDb,
-  hashPassword,
-  sessions,
-  submissions,
-  users,
-  verifyPassword,
-} from '@opencivic/db';
+import { type AppDb, hashPassword, sessions, users, verifyPassword } from '@opencivic/db';
 import {
   RESULTS_DISCLAIMER,
-  decisionSchema,
   loginSchema,
   registerSchema,
   roleChangeSchema,
 } from '@opencivic/shared';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -44,6 +36,7 @@ import {
   searchPollingUnits,
 } from './queries';
 import { LOGIN_LIMIT, REGISTER_LIMIT, REQUEST_LIMIT, createRateLimiter } from './rate-limit';
+import { mountReferenceRoutes } from './references';
 import {
   aggregateQuerySchema,
   auditQuerySchema,
@@ -52,8 +45,8 @@ import {
   identifierSchema,
   pollingUnitQuerySchema,
   queryValues,
-  reviewQuerySchema,
 } from './request-validation';
+import { mountReviewRoutes } from './reviews';
 import { mountSubmissionRoutes } from './submissions';
 
 const COOKIE = 'oc_session';
@@ -469,64 +462,8 @@ export function createApp(deps: AppDeps) {
     return c.body(new Uint8Array(bytes));
   });
 
-  app.get('/v1/review/submissions', async (c) => {
-    const user = requireUser(c);
-    if (!user) return c.json(errorBody('unauthenticated', 'Sign in required.'), 401);
-    if (user.role !== 'reviewer' && user.role !== 'admin') {
-      return c.json(errorBody('forbidden', 'The review queue is for reviewers and admins.'), 403);
-    }
-    const parsed = reviewQuerySchema.safeParse(queryValues(c.req.queries()));
-    if (!parsed.success) return validation(c, parsed.error);
-    const data = await listSubmissions(deps.db, parsed.data);
-    return c.json({ disclaimer: RESULTS_DISCLAIMER, official: false, data });
-  });
-
-  app.post('/v1/review/submissions/:id', async (c) => {
-    const user = requireUser(c);
-    if (!user) return c.json(errorBody('unauthenticated', 'Sign in required.'), 401);
-    if (user.role !== 'reviewer' && user.role !== 'admin') {
-      return c.json(errorBody('forbidden', 'The review queue is for reviewers and admins.'), 403);
-    }
-    const parsed = decisionSchema.safeParse(await readJson(c));
-    if (!parsed.success) return validation(c, parsed.error);
-    if (parsed.data.decision === 'flagged' && parsed.data.note.trim().length < 8) {
-      return c.json(errorBody('validation', 'A flag needs a note of at least 8 characters.'), 422);
-    }
-    const row = await getSubmissionRow(deps.db, c.req.param('id'));
-    if (!row) return c.json(errorBody('not_found', 'That observation does not exist.'), 404);
-    if (row.observerId === user.id) {
-      return c.json(errorBody('forbidden', 'You cannot review your own observation.'), 403);
-    }
-    if (row.status !== 'pending') {
-      return c.json(errorBody('conflict', 'Only a pending observation can be decided.'), 409);
-    }
-    const updated = await deps.db
-      .update(submissions)
-      .set({
-        status: parsed.data.decision,
-        decisionNote: parsed.data.note.trim() || null,
-        decidedBy: user.id,
-        decidedAt: new Date(),
-      })
-      .where(and(eq(submissions.id, row.id), eq(submissions.status, 'pending')))
-      .returning({ id: submissions.id });
-    if (updated.length === 0) {
-      return c.json(errorBody('conflict', 'Only a pending observation can be decided.'), 409);
-    }
-    await recordAudit(deps.db, {
-      actorId: user.id,
-      action: parsed.data.decision === 'approved' ? 'submission.approved' : 'submission.flagged',
-      entityType: 'submission',
-      entityId: row.id,
-      metadata: { note: parsed.data.note.trim() || null },
-    });
-    return c.json({
-      id: row.id,
-      status: parsed.data.decision,
-      official: false,
-      disclaimer: RESULTS_DISCLAIMER,
-    });
-  });
+  mountReviewRoutes(app, deps);
+  mountReferenceRoutes(app, deps, takeRequest);
 
   app.get('/v1/admin/audit', async (c) => {
     const user = requireUser(c);

@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { ZodError } from 'zod';
+import type { ZodError, ZodTypeAny, output } from 'zod';
 import type { AppEnv, SessionUser } from './app';
 
 export function errorBody(code: string, message: string, details: unknown = null) {
@@ -17,6 +17,13 @@ export function reject(
   throw new HTTPException(status, {
     res: Response.json(errorBody(code, message, details), { status }),
   });
+}
+
+export function parse<T extends ZodTypeAny>(schema: T, value: unknown): output<T> {
+  const result = schema.safeParse(value);
+  if (!result.success)
+    reject('validation', 'Check the request fields and try again.', 422, result.error.flatten());
+  return result.data;
 }
 
 export function requireRole(c: Context<AppEnv>, roles: SessionUser['role'][]) {

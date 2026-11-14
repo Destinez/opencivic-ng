@@ -58,7 +58,11 @@ export const aggregateQuerySchema = z
 
 export const auditQuerySchema = z.object({ limit: integerQuery(50, 1, 200) }).strict();
 export const reviewQuerySchema = z
-  .object({ status: z.enum(['pending', 'approved', 'flagged']).default('pending') })
+  .object({
+    status: z
+      .enum(['pending', 'in_review', 'approved', 'flagged', 'rejected', 'superseded', 'withdrawn'])
+      .default('pending'),
+  })
   .strict();
 export const emptyQuerySchema = z.object({}).strict();
 

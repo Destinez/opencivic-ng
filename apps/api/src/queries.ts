@@ -463,15 +463,23 @@ export async function findUserBySession(db: AppDb, tokenHash: string) {
   return rows[0] ?? null;
 }
 
-export type QueueStatus = 'pending' | 'approved' | 'flagged';
+export type QueueStatus =
+  | 'pending'
+  | 'in_review'
+  | 'approved'
+  | 'flagged'
+  | 'rejected'
+  | 'superseded'
+  | 'withdrawn';
 
 export async function listSubmissions(
   db: AppDb,
-  filters: { status?: QueueStatus; observerId?: string },
+  filters: { status?: QueueStatus; observerId?: string; id?: string },
 ) {
   const conditions = [];
   if (filters.status) conditions.push(eq(submissions.status, filters.status));
   if (filters.observerId) conditions.push(eq(submissions.observerId, filters.observerId));
+  if (filters.id) conditions.push(eq(submissions.id, filters.id));
   const rows = await db
     .select({
       submission: submissions,
@@ -490,9 +498,13 @@ export async function listSubmissions(
     .innerJoin(states, eq(states.id, lgas.stateId))
     .leftJoin(users, eq(users.id, submissions.observerId))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(submissions.createdAt));
+    .orderBy(desc(submissions.createdAt), desc(submissions.id))
+    .limit(100);
   return rows.map((row) => ({
     id: row.submission.id,
+    electionId: row.submission.electionId,
+    claimedBy: row.submission.claimedBy,
+    claimedUntil: row.submission.claimedUntil?.toISOString() ?? null,
     clientId: row.submission.clientId,
     capturedAt: row.submission.capturedAt?.toISOString() ?? null,
     receivedAt: row.submission.receivedAt.toISOString(),

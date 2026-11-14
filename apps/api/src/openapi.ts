@@ -1,4 +1,5 @@
 import { DATASET_DISCLAIMER, PRODUCT_DISCLAIMER, RESULTS_DISCLAIMER } from '@opencivic/shared';
+import { sheetMatchPaths } from './openapi-sheetmatch';
 
 const identifier = {
   type: 'string',
@@ -294,7 +295,15 @@ export function openApiDocument() {
               in: 'query',
               schema: {
                 type: 'string',
-                enum: ['pending', 'approved', 'flagged'],
+                enum: [
+                  'pending',
+                  'in_review',
+                  'approved',
+                  'flagged',
+                  'rejected',
+                  'superseded',
+                  'withdrawn',
+                ],
                 default: 'pending',
               },
             },
@@ -348,6 +357,7 @@ export function openApiDocument() {
       },
     },
   };
+  Object.assign(document.paths, sheetMatchPaths);
   const errorContent = { 'application/json': { schema: errorSchema } };
   for (const [path, methods] of Object.entries(document.paths)) {
     if (path === '/health') continue;

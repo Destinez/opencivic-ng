@@ -54,10 +54,33 @@ export const loginSchema = z
 
 export const decisionSchema = z
   .object({
-    decision: z.enum(['approved', 'flagged']),
+    decision: z.enum(['approved', 'flagged', 'rejected']),
+    reasonCode: z
+      .enum([
+        'checked',
+        'document_mismatch',
+        'unreadable',
+        'missing_photo',
+        'fabrication',
+        'personal_data',
+        'other',
+      ])
+      .optional(),
     note: z.string().trim().max(500).optional().default(''),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.decision !== 'approved' &&
+      (!value.reasonCode || value.reasonCode === 'checked' || value.note.length < 8)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['note'],
+        message: 'Flagging or rejecting needs a reason and a note of at least 8 characters.',
+      });
+    }
+  });
 
 export const roleChangeSchema = z
   .object({

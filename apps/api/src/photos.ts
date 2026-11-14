@@ -1,8 +1,27 @@
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { extname, join, resolve, sep } from 'node:path';
 import sharp from 'sharp';
 import { reject } from './http';
+
+export async function readStoredPhoto(directory: string, path: string) {
+  const file = await realpath(path).catch(() =>
+    reject('not_found', 'This photo is no longer stored.', 404),
+  );
+  const root = await realpath(resolve(directory));
+  if (!file.startsWith(`${root}${sep}`))
+    reject('not_found', 'This photo is no longer stored.', 404);
+  const bytes = await readFile(file).catch(() =>
+    reject('not_found', 'This photo is no longer stored.', 404),
+  );
+  const mime =
+    extname(file) === '.png'
+      ? 'image/png'
+      : extname(file) === '.webp'
+        ? 'image/webp'
+        : 'image/jpeg';
+  return { bytes, mime };
+}
 
 export async function processPhoto(photo: File) {
   if (photo.size > 2_000_000) reject('payload_too_large', 'Photos must be 2 MB or smaller.', 413);

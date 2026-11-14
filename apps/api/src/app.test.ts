@@ -178,6 +178,11 @@ describe.sequential('OpenCivic API', () => {
     expect(forbidden.status).toBe(403);
 
     const reviewer = await login(DEMO_ACCOUNTS.reviewer.email, DEMO_ACCOUNTS.reviewer.password);
+    const claimed = await app.request(`/v1/review/submissions/${createdBody.id}/claim`, {
+      method: 'POST',
+      headers: { cookie: reviewer },
+    });
+    expect(claimed.status).toBe(200);
     const approved = await app.request(`/v1/review/submissions/${createdBody.id}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: reviewer },
@@ -187,7 +192,11 @@ describe.sequential('OpenCivic API', () => {
     const again = await app.request(`/v1/review/submissions/${createdBody.id}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: reviewer },
-      body: JSON.stringify({ decision: 'flagged', note: 'Too late to change it.' }),
+      body: JSON.stringify({
+        decision: 'flagged',
+        reasonCode: 'other',
+        note: 'Too late to change it.',
+      }),
     });
     expect(again.status).toBe(409);
 

@@ -36,6 +36,40 @@
   padding: 1rem 0;
 }
 
+.sheet-images figure {
+  margin: 1rem 0;
+}
+.sheet-images img {
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  background: white;
+}
+.hash {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+.table-scroll {
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.data-table th,
+.data-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 0.5rem 0;
+  font-weight: 650;
+}
+
 * {
   box-sizing: border-box;
 }

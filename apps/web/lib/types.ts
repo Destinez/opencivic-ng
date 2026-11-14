@@ -80,6 +80,11 @@ export type AggregateRow = {
 
 export type SubmissionCard = {
   id: string;
+  electionId: string;
+  capturedAt: string | null;
+  receivedAt: string;
+  claimedBy: string | null;
+  claimedUntil: string | null;
   status: string;
   createdAt: string;
   accreditedVoters: number;
@@ -99,6 +104,48 @@ export type SubmissionCard = {
     stateName: string;
   };
   observer: { id: string; name: string } | null;
+};
+
+export type ReferenceRecord = {
+  id: string;
+  electionId: string;
+  pollingUnitId: string;
+  source: string;
+  sourceUrl: string;
+  retrievedAt: string;
+  imageSha256: string;
+  imageUrl: string;
+  accreditedVoters: number;
+  rejectedBallots: number;
+  partyVotes: PartyVotes;
+  transcribedBy: string;
+  verifiedBy: string | null;
+  verifiedAt: string | null;
+  notice: string;
+};
+
+export type SheetFlag = {
+  id: string;
+  referenceId: string | null;
+  rule: string;
+  field: string;
+  observed: number;
+  expected: number;
+  severity: string;
+};
+export type ReviewDetail = {
+  submission: SubmissionCard;
+  trustLevel: number;
+  reviews: Array<{
+    id: number;
+    reviewerId: string;
+    decision: string;
+    reasonCode: string | null;
+    note: string;
+    createdAt: string;
+  }>;
+  references: ReferenceRecord[];
+  flags: SheetFlag[];
 };
 
 export type SessionUser = {

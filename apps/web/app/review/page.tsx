@@ -9,8 +9,8 @@ export default function ReviewPage() {
       <p className="kicker">Reviewer</p>
       <h1>Review queue</h1>
       <p className="lede">
-        Approve or flag a pending observation. You cannot decide a sheet you filed yourself. Photos
-        are visible here and are not published on the tally.
+        Claim a sheet for ten minutes, check its photo and figures, then record a decision. New
+        observers need two independent approvals. You cannot review your own sheet.
       </p>
       <ReviewQueue />
     </>
