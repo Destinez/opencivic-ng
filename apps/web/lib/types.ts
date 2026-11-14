@@ -148,6 +148,60 @@ export type ReviewDetail = {
   flags: SheetFlag[];
 };
 
+export type CaseRecord = {
+  id: string;
+  electionId: string;
+  pollingUnit: PollingUnit;
+  status: string;
+  severity: string;
+  summary: string;
+  openedBy: string;
+  confirmedBy: string | null;
+  createdAt: string;
+  publishedAt: string | null;
+  retractionPending: boolean;
+  retractionNote: string | null;
+  evidence: Array<{
+    flag: SheetFlag;
+    observation: Pick<
+      SubmissionCard,
+      'id' | 'accreditedVoters' | 'rejectedBallots' | 'partyVotes' | 'capturedAt' | 'receivedAt'
+    > & { observer: string; photoSha256: string | null };
+    reference:
+      | (Pick<
+          ReferenceRecord,
+          | 'id'
+          | 'accreditedVoters'
+          | 'rejectedBallots'
+          | 'partyVotes'
+          | 'source'
+          | 'sourceUrl'
+          | 'retrievedAt'
+          | 'imageSha256'
+          | 'transcribedBy'
+          | 'verifiedBy'
+          | 'verifiedAt'
+        > & { dataset: string })
+      | null;
+  }>;
+  history: Array<{
+    id: number;
+    at: string;
+    actor: string;
+    action: string;
+    note: string | null;
+    hash: string;
+  }>;
+  permissions: {
+    investigate: boolean;
+    resolve: boolean;
+    confirm: boolean;
+    retract: boolean;
+    comment: boolean;
+  };
+  comments: Array<{ id: string; body: string; at: string; author: string }>;
+};
+
 export type SessionUser = {
   id: string;
   email: string;

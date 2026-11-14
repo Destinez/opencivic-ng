@@ -5,6 +5,7 @@ import { formatWhen } from '@/lib/format';
 import { jsonRequest, request } from '@/lib/request';
 import type { ReviewDetail, SessionUser } from '@/lib/types';
 import { useCallback, useEffect, useState } from 'react';
+import { OpenCaseForm } from './open-case-form';
 import { ReferenceForm } from './reference-form';
 
 export function SheetReview({ id }: { id: string }) {
@@ -246,6 +247,7 @@ export function SheetReview({ id }: { id: string }) {
               </form>
             </section>
           )}
+          <OpenCaseForm detail={detail} />
           <section className="card outbox">
             <h2>Review history</h2>
             {detail.reviews.length ? (

@@ -224,6 +224,7 @@ export const discrepancyCases = pgTable('discrepancy_cases', {
 export const caseItems = pgTable('case_items', {
   caseId: text('case_id').notNull(),
   flagId: text('flag_id').notNull(),
+  snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull().default({}),
 });
 
 export const caseComments = pgTable('case_comments', {

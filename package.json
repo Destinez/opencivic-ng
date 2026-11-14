@@ -17,6 +17,7 @@
     "e2e": "playwright test --project=smoke",
     "screenshots": "playwright test --project=screenshots",
     "check:budget": "node scripts/check-budget.mjs",
+    "audit:verify": "pnpm --filter @opencivic/api exec tsx ../../scripts/verify-audit.mts",
     "db:migrate": "pnpm --filter @opencivic/db migrate",
     "db:seed": "pnpm --filter @opencivic/db seed",
     "db:clear-sample": "pnpm --filter @opencivic/db clear-sample",

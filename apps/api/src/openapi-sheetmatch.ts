@@ -9,6 +9,108 @@ const result = {
 const id = [{ name: 'id', in: 'path', required: true, schema: { type: 'string', maxLength: 160 } }];
 
 export const sheetMatchPaths = {
+  '/v1/cases': {
+    post: {
+      tags: ['Authenticated'],
+      summary: 'Open a private case from current discrepancy flags',
+      description:
+        'Reviewer or admin. All flags must concern one unit/election. Duplicate-image abuse signals are excluded. Observations need reviewed photos; L0 needs two approvals and another observer’s corroboration. One active case per unit/election.',
+      security: auth,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['flagIds', 'summary'],
+              properties: {
+                flagIds: {
+                  type: 'array',
+                  minItems: 1,
+                  maxItems: 50,
+                  uniqueItems: true,
+                  items: { type: 'string' },
+                },
+                summary: { type: 'string', minLength: 10, maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: { ...result, '201': { description: 'Case opened, still private' } },
+    },
+  },
+  '/v1/cases/{id}': {
+    get: {
+      tags: ['Sheet Match'],
+      summary: 'Published case facts, evidence snapshots and public history',
+      description:
+        'Public after publication, including retracted cases. Reviewers/admins can see drafts; desk accounts can read non-drafts. Observer identities and private notes are not exposed publicly. Includes permissions for the current account.',
+      parameters: id,
+      responses: result,
+    },
+  },
+  '/v1/cases/{id}/history': {
+    get: {
+      tags: ['Sheet Match'],
+      summary: 'Case history with audit-chain anchors and pseudonymous actors',
+      parameters: id,
+      responses: result,
+    },
+  },
+  '/v1/cases/{id}/transition': {
+    post: {
+      tags: ['Authenticated'],
+      summary: 'Investigate, independently confirm, resolve or retract a case',
+      description:
+        'open → under_investigation → confirmed/explained/dismissed. Confirmation requires verified references and a reviewer other than the opener; it publishes immediately in the same transaction. Published evidence is immutable. Two different admins must request and confirm retraction; the original case remains visible. Every transition writes an atomic audit event.',
+      security: auth,
+      parameters: id,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['to', 'note'],
+              properties: {
+                to: {
+                  type: 'string',
+                  enum: ['under_investigation', 'confirmed', 'explained', 'dismissed', 'retracted'],
+                },
+                note: { type: 'string', minLength: 8, maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: result,
+    },
+  },
+  '/v1/cases/{id}/comments': {
+    post: {
+      tags: ['Authenticated'],
+      summary: 'Add a private review or desk comment to a readable case',
+      security: auth,
+      parameters: id,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['body'],
+              properties: { body: { type: 'string', minLength: 1, maxLength: 2000 } },
+            },
+          },
+        },
+      },
+      responses: { ...result, '201': { description: 'Comment saved and audited' } },
+    },
+  },
   '/v1/review/submissions/{id}/claim': {
     post: {
       tags: ['Authenticated'],

@@ -28,7 +28,11 @@ describe('Sheet Match schema', () => {
     const migrations = await handle.db.execute(
       sql`SELECT name FROM schema_migrations ORDER BY name`,
     );
-    expect(migrations.rows).toEqual([{ name: '0001_init.sql' }, { name: '0002_sheet_match.sql' }]);
+    expect(migrations.rows).toEqual([
+      { name: '0001_init.sql' },
+      { name: '0002_sheet_match.sql' },
+      { name: '0003_case_evidence.sql' },
+    ]);
     const events = await handle.db.execute(
       sql`SELECT hash, prev_hash FROM audit_events ORDER BY id`,
     );

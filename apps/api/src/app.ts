@@ -15,6 +15,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
+import { mountCaseRoutes } from './cases';
 import { errorBody, readJson, validation } from './http';
 import { docsHtml, openApiDocument } from './openapi';
 import {
@@ -463,6 +464,7 @@ export function createApp(deps: AppDeps) {
   });
 
   mountReviewRoutes(app, deps);
+  mountCaseRoutes(app, deps);
   mountReferenceRoutes(app, deps, takeRequest);
 
   app.get('/v1/admin/audit', async (c) => {

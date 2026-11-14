@@ -13,6 +13,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
+    ...(process.env.PLAYWRIGHT_CHROME_PATH
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROME_PATH } }
+      : {}),
   },
   projects: [
     { name: 'smoke', testIgnore: /screenshots\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
