@@ -1,0 +1,41 @@
+{
+  "name": "opencivic-ng",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Unofficial civic tools for Nigerian elections: polling-unit lookup, voter guidance, and crowdsourced observation tallies.",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @opencivic/api --filter @opencivic/web dev",
+    "build": "pnpm typecheck && pnpm --filter @opencivic/web build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "e2e": "playwright test --project=smoke",
+    "screenshots": "playwright test --project=screenshots",
+    "check:budget": "node scripts/check-budget.mjs",
+    "audit:verify": "pnpm --filter @opencivic/api exec tsx ../../scripts/verify-audit.mts",
+    "db:migrate": "pnpm --filter @opencivic/db migrate",
+    "db:seed": "pnpm --filter @opencivic/db seed",
+    "db:clear-sample": "pnpm --filter @opencivic/db clear-sample",
+    "import:inec": "pnpm --filter @opencivic/db import:inec",
+    "privacy:retain": "pnpm --filter @opencivic/api exec tsx ../../scripts/retention.mts",
+    "demo:sheetmatch": "node scripts/demo-sheetmatch.mjs",
+    "demo:captures": "SEED_SHEETMATCH_DEMO=true playwright test --project=demo",
+    "demo:gif": "pnpm --filter @opencivic/api exec tsx src/demo-gif.ts"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@biomejs/biome", "esbuild"]
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@biomejs/biome": "1.9.4",
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.4"
+  }
+}
