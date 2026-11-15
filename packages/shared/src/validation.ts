@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PARTY_CODES, type PartyVotes, emptyVotes } from './parties';
+import { hasContactDetails } from './privacy';
 
 const count = z.number().int().nonnegative().max(200_000);
 
@@ -66,7 +67,16 @@ export const decisionSchema = z
         'other',
       ])
       .optional(),
-    note: z.string().trim().max(500).optional().default(''),
+    note: z
+      .string()
+      .trim()
+      .max(500)
+      .refine(
+        (text) => !hasContactDetails(text),
+        'Remove phone numbers and email addresses from the note.',
+      )
+      .optional()
+      .default(''),
   })
   .strict()
   .superRefine((value, context) => {

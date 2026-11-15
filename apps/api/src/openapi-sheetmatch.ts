@@ -9,6 +9,47 @@ const result = {
 const id = [{ name: 'id', in: 'path', required: true, schema: { type: 'string', maxLength: 160 } }];
 
 export const sheetMatchPaths = {
+  '/v1/me/export': {
+    get: {
+      tags: ['Authenticated'],
+      summary: 'Download your personal records and stored photos',
+      description:
+        'ZIP containing account.json and photos. Password hashes, session tokens and storage paths are excluded. Account JSON includes official: false and the disclaimer.',
+      security: auth,
+      responses: {
+        ...result,
+        '200': {
+          description: 'Personal data ZIP',
+          content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } },
+        },
+      },
+    },
+  },
+  '/v1/me/consent': {
+    post: {
+      tags: ['Authenticated'],
+      summary: 'Withdraw or restore observation-evidence consent',
+      description:
+        'Withdrawal removes unpublished observations and private evidence packs and stops new submissions. Published evidence remains. Account-storage consent is withdrawn with account deletion.',
+      security: auth,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['purpose', 'granted'],
+              properties: {
+                purpose: { type: 'string', enum: ['observation_evidence'] },
+                granted: { type: 'boolean' },
+              },
+            },
+          },
+        },
+      },
+      responses: result,
+    },
+  },
   '/v1/admin/observers': {
     get: {
       tags: ['Authenticated'],

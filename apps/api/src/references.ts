@@ -177,7 +177,7 @@ export function mountReferenceRoutes(app: Hono<AppEnv>, deps: AppDeps, takeReque
     requireRole(c, ['reviewer', 'admin']);
     const id = parse(identifierSchema, c.req.param('id'));
     const [row] = await deps.db.select().from(referenceRecords).where(eq(referenceRecords.id, id));
-    if (!row) reject('not_found', 'That reference does not exist.', 404);
+    if (!row?.imagePath) reject('not_found', 'That reference image is no longer stored.', 404);
     const photo = await readStoredPhoto(deps.uploadDir, row.imagePath);
     c.header('Content-Type', photo.mime);
     return c.body(new Uint8Array(photo.bytes));

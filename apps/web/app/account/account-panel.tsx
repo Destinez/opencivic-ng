@@ -1,6 +1,8 @@
 'use client';
 
-import { setMeta } from '@/lib/outbox';
+import { message } from '@/lib/i18n/messages';
+
+import { listDrafts, removeDraft, setMeta } from '@/lib/outbox';
 import type { SessionUser, SubmissionCard } from '@/lib/types';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
@@ -95,8 +97,33 @@ export function AccountPanel() {
       setError(result.data.error?.message ?? 'The account was not deleted.');
       return;
     }
-    setInfo('The account was deleted. The audit log keeps an opaque id and drops the email.');
+    for (const draft of await listDrafts(user?.id ?? '')) await removeDraft(draft.clientId);
+    await setMeta('syncPaused', true);
+    setInfo(
+      'Account deleted. Unpublished sheets were removed; published evidence remains without your account identity.',
+    );
     await setMeta('activeUser', undefined).catch(() => undefined);
+    await refresh();
+  }
+
+  async function consent(granted: boolean) {
+    const result = await send<ErrorBody>('/v1/me/consent', {
+      method: 'POST',
+      body: JSON.stringify({ purpose: 'observation_evidence', granted }),
+    });
+    if (!result.ok) {
+      setError(result.data.error?.message ?? 'Consent could not be changed.');
+      return;
+    }
+    if (!granted && user) {
+      await setMeta('syncPaused', true);
+      for (const draft of await listDrafts(user.id)) await removeDraft(draft.clientId);
+    } else await setMeta('syncPaused', false);
+    setInfo(
+      granted
+        ? 'Evidence consent restored.'
+        : 'Evidence consent withdrawn. Unpublished sheets were removed; published evidence is retained.',
+    );
     await refresh();
   }
 
@@ -110,6 +137,15 @@ export function AccountPanel() {
           {user.email} · {user.role}
         </p>
         <div className="actions">
+          <a className="button secondary" href="/backend/v1/me/export">
+            {message('downloadData')}
+          </a>
+          <button type="button" className="secondary" onClick={() => void consent(false)}>
+            {message('withdrawConsent')}
+          </button>
+          <button type="button" className="secondary" onClick={() => void consent(true)}>
+            {message('restoreConsent')}
+          </button>
           <Link className="button" href="/results/new">
             File an observation
           </Link>
@@ -136,7 +172,7 @@ export function AccountPanel() {
           </button>
         </div>
         {error ? (
-          <p className="alert" role="alert">
+          <p className="alert" role="alert" id="account-error">
             {error}
           </p>
         ) : null}
@@ -156,7 +192,12 @@ export function AccountPanel() {
 
   return (
     <div className="grid-2">
-      <form className="card" onSubmit={signIn} aria-labelledby="sign-in-title">
+      <form
+        className="card"
+        onSubmit={signIn}
+        aria-labelledby="sign-in-title"
+        aria-describedby={error ? 'account-error' : undefined}
+      >
         <h2 id="sign-in-title">Sign in</h2>
         <p>Demo reviewer: chidi.bello@example.com / reviewer-demo-pass</p>
         <div className="field">
@@ -175,7 +216,12 @@ export function AccountPanel() {
         </div>
         <button type="submit">Sign in</button>
       </form>
-      <form className="card" onSubmit={register} aria-labelledby="register-title">
+      <form
+        className="card"
+        onSubmit={register}
+        aria-labelledby="register-title"
+        aria-describedby={error ? 'account-error' : undefined}
+      >
         <h2 id="register-title">Create an observer account</h2>
         <div className="field">
           <label htmlFor="register-name">Name</label>
@@ -210,7 +256,7 @@ export function AccountPanel() {
         <button type="submit">Create account</button>
       </form>
       {error ? (
-        <p className="alert" role="alert">
+        <p className="alert" role="alert" id="account-error">
           {error}
         </p>
       ) : null}

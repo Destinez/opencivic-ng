@@ -1,5 +1,7 @@
 'use client';
 
+import { ContactWarning } from '@/components/contact-warning';
+
 import { SheetComparison } from '@/components/sheet-comparison';
 import { formatWhen } from '@/lib/format';
 import { jsonRequest, request } from '@/lib/request';
@@ -220,6 +222,7 @@ export function SheetReview({ id }: { id: string }) {
                   </select>
                 </div>
                 <div className="field">
+                  <ContactWarning text={note} />
                   <label htmlFor="decision-note">Decision note</label>
                   <textarea
                     id="decision-note"

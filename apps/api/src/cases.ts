@@ -7,6 +7,7 @@ import {
   discrepancyCases,
   discrepancyFlags,
 } from '@opencivic/db';
+import { hasContactDetails } from '@opencivic/shared/privacy';
 import { and, asc, eq, notInArray, sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
@@ -23,16 +24,35 @@ const newCaseSchema = z
       .min(1)
       .max(50)
       .refine((ids) => new Set(ids).size === ids.length, 'Choose each flag once.'),
-    summary: z.string().trim().min(10).max(1000),
+    summary: z
+      .string()
+      .trim()
+      .min(10)
+      .max(1000)
+      .refine((text) => !hasContactDetails(text), 'Remove phone numbers and email addresses.'),
   })
   .strict();
 const transitionSchema = z
   .object({
     to: z.enum(['under_investigation', 'confirmed', 'explained', 'dismissed', 'retracted']),
-    note: z.string().trim().min(8).max(1000),
+    note: z
+      .string()
+      .trim()
+      .min(8)
+      .max(1000)
+      .refine((text) => !hasContactDetails(text), 'Remove phone numbers and email addresses.'),
   })
   .strict();
-const commentSchema = z.object({ body: z.string().trim().min(1).max(2000) }).strict();
+const commentSchema = z
+  .object({
+    body: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2000)
+      .refine((text) => !hasContactDetails(text), 'Remove phone numbers and email addresses.'),
+  })
+  .strict();
 
 export function canReadCase(row: typeof discrepancyCases.$inferSelect, user: SessionUser | null) {
   return Boolean(

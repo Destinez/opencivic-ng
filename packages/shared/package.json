@@ -9,7 +9,8 @@
     "./labels": "./src/labels.ts",
     "./parties": "./src/parties.ts",
     "./validation": "./src/validation.ts",
-    "./sheetmatch": "./src/sheetmatch.ts"
+    "./sheetmatch": "./src/sheetmatch.ts",
+    "./privacy": "./src/privacy.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

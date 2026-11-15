@@ -1,5 +1,9 @@
 'use client';
 
+import { message as translatedMessage } from '@/lib/i18n/messages';
+
+import { ContactWarning } from '@/components/contact-warning';
+
 import { SheetComparison } from '@/components/sheet-comparison';
 import { formatWhen } from '@/lib/format';
 import { jsonRequest, request } from '@/lib/request';
@@ -107,7 +111,7 @@ export function CaseView({ id }: { id: string }) {
             <h2>Reference provenance</h2>
             <p>
               <a className="button" href={`/backend/v1/cases/${id}/evidence-pack`}>
-                Download evidence pack
+                {translatedMessage('evidencePack')}
               </a>
             </p>
             {references.length ? (
@@ -158,6 +162,7 @@ export function CaseView({ id }: { id: string }) {
                 }}
               >
                 <div className="field">
+                  <ContactWarning text={note} />
                   <label htmlFor="case-note">Decision note</label>
                   <textarea
                     id="case-note"

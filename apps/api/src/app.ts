@@ -2,7 +2,14 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { getConnInfo } from '@hono/node-server/conninfo';
-import { type AppDb, hashPassword, sessions, users, verifyPassword } from '@opencivic/db';
+import {
+  type AppDb,
+  hashPassword,
+  privacyConsents,
+  sessions,
+  users,
+  verifyPassword,
+} from '@opencivic/db';
 import {
   RESULTS_DISCLAIMER,
   loginSchema,
@@ -20,6 +27,7 @@ import { mountCaseRoutes } from './cases';
 import { mountEvidenceRoutes } from './evidence';
 import { errorBody, readJson, validation } from './http';
 import { docsHtml, openApiDocument } from './openapi';
+import { deleteAccount, mountPrivacyRoutes } from './privacy';
 import {
   aggregateElection,
   countActiveAdmins,
@@ -343,6 +351,9 @@ export function createApp(deps: AppDeps) {
       consentAt: now,
       ageConfirmedAt: now,
     });
+    await deps.db
+      .insert(privacyConsents)
+      .values({ userId: id, purpose: 'account_storage', grantedAt: now });
     await recordAudit(deps.db, {
       actorId: id,
       action: 'account.registered',
@@ -415,23 +426,7 @@ export function createApp(deps: AppDeps) {
     if (user.role === 'admin' && (await countActiveAdmins(deps.db)) <= 1) {
       return c.json(errorBody('conflict', 'The last admin account cannot be deleted here.'), 409);
     }
-    await deps.db
-      .update(users)
-      .set({
-        name: 'Deleted account',
-        email: `deleted-${user.id}@users.invalid`,
-        passwordHash: 'deleted',
-        deletedAt: new Date(),
-      })
-      .where(eq(users.id, user.id));
-    await deps.db.delete(sessions).where(eq(sessions.userId, user.id));
-    await recordAudit(deps.db, {
-      actorId: user.id,
-      action: 'account.deleted',
-      entityType: 'user',
-      entityId: user.id,
-      metadata: {},
-    });
+    await deleteAccount(deps, user.id);
     deleteCookie(c, COOKIE, { path: '/' });
     return c.json({ ok: true });
   });
@@ -472,6 +467,7 @@ export function createApp(deps: AppDeps) {
     return c.body(new Uint8Array(bytes));
   });
 
+  mountPrivacyRoutes(app, deps);
   mountTrustRoutes(app, deps);
   mountReviewRoutes(app, deps);
   mountCaseRoutes(app, deps);

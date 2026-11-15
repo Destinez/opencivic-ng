@@ -4,8 +4,10 @@ import {
   elections,
   observerProfiles,
   pollingUnits,
+  privacyConsents,
   recomputeSheetMatch,
   submissions,
+  users,
 } from '@opencivic/db';
 import { type SubmissionInput, consistencyWarnings, parseSubmissionBody } from '@opencivic/shared';
 import { and, eq, sql } from 'drizzle-orm';
@@ -78,6 +80,12 @@ export function mountSubmissionRoutes(app: Hono<AppEnv>, deps: AppDeps, takeRequ
     try {
       const result = await deps.db.transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`observer:${user.id}`}))`);
+        const [account] = await tx
+          .select({ deletedAt: users.deletedAt })
+          .from(users)
+          .where(eq(users.id, user.id));
+        if (!account || account.deletedAt)
+          reject('unauthenticated', 'This account has been deleted.', 401);
         const [existing] = await tx
           .select()
           .from(submissions)
@@ -89,6 +97,21 @@ export function mountSubmissionRoutes(app: Hono<AppEnv>, deps: AppDeps, takeRequ
             reject('conflict', 'This clientId already belongs to different figures.', 409);
           return { row: existing, created: false };
         }
+        const [consent] = await tx
+          .select()
+          .from(privacyConsents)
+          .where(
+            and(
+              eq(privacyConsents.userId, user.id),
+              eq(privacyConsents.purpose, 'observation_evidence'),
+            ),
+          );
+        if (consent?.withdrawnAt)
+          reject(
+            'consent_withdrawn',
+            'Restore evidence consent in your account before submitting.',
+            403,
+          );
         const [election] = await tx
           .select()
           .from(elections)
@@ -175,6 +198,10 @@ export function mountSubmissionRoutes(app: Hono<AppEnv>, deps: AppDeps, takeRequ
           })
           .returning();
         if (!row) throw new Error('Submission insert did not return a row.');
+        await tx
+          .insert(privacyConsents)
+          .values({ userId: user.id, purpose: 'observation_evidence', grantedAt: new Date() })
+          .onConflictDoNothing();
         await tx.insert(observerProfiles).values({ userId: user.id }).onConflictDoNothing();
         await recordAudit(tx, {
           actorId: user.id,

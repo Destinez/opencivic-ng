@@ -1,5 +1,7 @@
 'use client';
 
+import { message } from '@/lib/i18n/messages';
+
 import { OutboxPanel } from '@/components/outbox-panel';
 import { compressPhoto } from '@/lib/compress-photo';
 import { getMeta, saveDraft, setMeta } from '@/lib/outbox';
@@ -196,7 +198,11 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
 
   return (
     <>
-      <form className="card" onSubmit={onSubmit}>
+      <form
+        className="card"
+        onSubmit={onSubmit}
+        aria-describedby={error ? 'submit-error' : undefined}
+      >
         <p>
           Signed in as {user.name} ({user.role}).
         </p>
@@ -344,24 +350,35 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
         </fieldset>
         <div className="field">
           <label htmlFor="photo">Photo of the result sheet, optional</label>
-          <input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
+          <input
+            id="photo"
+            name="photo"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            aria-describedby="photo-guide"
+          />
+          <p id="photo-guide">
+            Photograph the sheet only, with no faces, names of voters or register pages. Location
+            metadata is removed.
+          </p>
         </div>
         <label className="check">
           <input name="declaration" type="checkbox" required />
           <span>
             I observed these figures myself. I will not upload voter-register pages, faces, or other
-            people’s personal data. I understand this publication is unofficial and not an INEC
-            result.
+            people’s personal data. I consent to storing these figures and publishing the sheet as
+            evidence after independent review. I understand this publication is unofficial and not
+            an INEC result.
           </span>
         </label>
         {error ? (
-          <p className="alert" role="alert">
+          <p className="alert" role="alert" id="submit-error">
             {error}
           </p>
         ) : null}
         {done ? <output className="status">{done}</output> : null}
         <button type="submit" disabled={pending || !electionId}>
-          {pending ? 'Saving…' : 'Save observation'}
+          {message(pending ? 'savingObservation' : 'saveObservation')}
         </button>
       </form>
       <OutboxPanel ownerId={user.id} />

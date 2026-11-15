@@ -1,5 +1,7 @@
 'use client';
 
+import { message } from '@/lib/i18n/messages';
+
 import { SiteFooter } from '@/components/site-footer';
 import { SiteHeader } from '@/components/site-header';
 import { PRODUCT_DISCLAIMER } from '@opencivic/shared/labels';
@@ -11,7 +13,7 @@ export function SiteFrame({ children }: { children: ReactNode }) {
   return (
     <div className={observer ? 'observer-flow' : undefined}>
       <a className="skip" href="#main">
-        Skip to content
+        {message('skipContent')}
       </a>
       <p className="banner">
         {PRODUCT_DISCLAIMER} Sample locations are not official polling units. Tallies are

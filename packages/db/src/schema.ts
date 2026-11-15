@@ -176,7 +176,7 @@ export const referenceRecords = pgTable('reference_records', {
   source: text('source').notNull(),
   sourceUrl: text('source_url').notNull(),
   retrievedAt: timestamp('retrieved_at', { withTimezone: true }).notNull(),
-  imagePath: text('image_path').notNull(),
+  imagePath: text('image_path'),
   imageSha256: text('image_sha256').notNull(),
   accreditedVoters: integer('accredited_voters').notNull(),
   rejectedBallots: integer('rejected_ballots').notNull(),
@@ -265,5 +265,16 @@ export const submissionSignals = pgTable('submission_signals', {
   pollingUnitId: text('polling_unit_id').notNull(),
   ipHash: text('ip_hash').notNull(),
   deviceHash: text('device_hash'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const privacyConsents = pgTable('privacy_consents', {
+  userId: text('user_id').notNull(),
+  purpose: text('purpose').notNull(),
+  grantedAt: timestamp('granted_at', { withTimezone: true }).notNull(),
+  withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+});
+export const fileDeletions = pgTable('file_deletions', {
+  path: text('path').primaryKey(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

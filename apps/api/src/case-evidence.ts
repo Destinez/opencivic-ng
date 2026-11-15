@@ -73,6 +73,8 @@ export async function gatherEvidence(db: AppDb, ids: string[], publishing = fals
         'An L0 observation needs two approvals and corroboration from another observer.',
         409,
       );
+    if (reference && !reference.imagePath)
+      reject('conflict', 'The reference photo has expired and cannot support a case.', 409);
     if (publishing && reference && !reference.verifiedBy)
       reject(
         'two_person_rule',
