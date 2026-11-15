@@ -123,6 +123,11 @@ export function AccountPanel() {
               Audit log
             </Link>
           ) : null}
+          {user.role === 'admin' && (
+            <Link className="button secondary" href="/admin/observers">
+              Observer trust and abuse
+            </Link>
+          )}
           <button type="button" className="secondary" onClick={() => void signOut()}>
             Sign out
           </button>

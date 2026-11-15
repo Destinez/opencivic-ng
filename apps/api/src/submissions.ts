@@ -11,11 +11,13 @@ import { type SubmissionInput, consistencyWarnings, parseSubmissionBody } from '
 import { and, eq, sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
-import type { AppDeps, AppEnv } from './app';
+import { type AppDeps, type AppEnv, clientKey } from './app';
+import { parse } from './http';
 import { readJson, reject, requireRole, validation } from './http';
 import { processPhoto, storePhoto } from './photos';
 import { recordAudit } from './queries';
 import { SUBMISSION_LIMIT, type TakeRequest } from './rate-limit';
+import { recordSubmissionSignal } from './trust';
 
 function present(row: typeof submissions.$inferSelect) {
   return {
@@ -50,6 +52,8 @@ export function mountSubmissionRoutes(app: Hono<AppEnv>, deps: AppDeps, takeRequ
     const owner = c.req.header('x-observer-id');
     if (owner && owner !== user.id)
       reject('forbidden', 'Sign in with the account that saved this observation.', 403);
+    const deviceId = c.req.header('x-device-id');
+    if (deviceId) parse(z.string().uuid(), deviceId);
     let payload: unknown;
     let photo: File | null = null;
     if (c.req.header('content-type')?.toLowerCase().startsWith('multipart/form-data')) {
@@ -183,6 +187,13 @@ export function mountSubmissionRoutes(app: Hono<AppEnv>, deps: AppDeps, takeRequ
             pollingUnitId: input.pollingUnitId,
             hasPhoto: Boolean(image),
           },
+        });
+        await recordSubmissionSignal(tx, {
+          submissionId: id,
+          observerId: user.id,
+          pollingUnitId: input.pollingUnitId,
+          address: clientKey(c),
+          deviceId,
         });
         await recomputeSheetMatch(tx, input.electionId, input.pollingUnitId);
         return { row, created: true };

@@ -51,6 +51,7 @@ import {
 } from './request-validation';
 import { mountReviewRoutes } from './reviews';
 import { mountSubmissionRoutes } from './submissions';
+import { mountTrustRoutes } from './trust';
 
 const COOKIE = 'oc_session';
 const SESSION_SECONDS = 60 * 60 * 24 * 14;
@@ -82,7 +83,7 @@ function timingPad() {
   return dummyHash;
 }
 
-function clientKey(c: Context<AppEnv>): string {
+export function clientKey(c: Context<AppEnv>): string {
   try {
     const info = getConnInfo(c);
     return info.remote.address ?? 'local';
@@ -150,7 +151,7 @@ export function createApp(deps: AppDeps) {
       },
       credentials: true,
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'X-Observer-Id'],
+      allowHeaders: ['Content-Type', 'X-Observer-Id', 'X-Device-Id'],
       exposeHeaders: [
         'Retry-After',
         'RateLimit-Limit',
@@ -471,6 +472,7 @@ export function createApp(deps: AppDeps) {
     return c.body(new Uint8Array(bytes));
   });
 
+  mountTrustRoutes(app, deps);
   mountReviewRoutes(app, deps);
   mountCaseRoutes(app, deps);
   mountBoardRoutes(app, deps);

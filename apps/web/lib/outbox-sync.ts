@@ -1,4 +1,4 @@
-import { type OutboxEntry, changeDraft, getMeta, listDrafts } from './outbox';
+import { type OutboxEntry, changeDraft, getMeta, listDrafts, setMeta } from './outbox';
 
 const backoff = (attempt: number) => Math.min(300_000, 5000 * 2 ** Math.max(0, attempt - 1));
 
@@ -35,6 +35,11 @@ export async function syncOutbox(): Promise<void> {
       }));
     return;
   }
+  let deviceId = await getMeta<string>('deviceId');
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    await setMeta('deviceId', deviceId);
+  }
   for (const candidate of due) {
     const entry = await changeDraft(candidate.clientId, (current) => {
       if (
@@ -63,7 +68,11 @@ export async function syncOutbox(): Promise<void> {
         const response = await fetch('/backend/v1/submissions', {
           method: 'POST',
           credentials: 'include',
-          headers: { 'content-type': 'application/json', 'x-observer-id': owner.id },
+          headers: {
+            'content-type': 'application/json',
+            'x-observer-id': owner.id,
+            'x-device-id': deviceId,
+          },
           body: JSON.stringify(entry.input),
         });
         const data = await readResponse(response);

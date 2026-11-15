@@ -258,3 +258,12 @@ export const rateLimits = pgTable('rate_limits', {
   windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
   count: integer('count').notNull(),
 });
+
+export const submissionSignals = pgTable('submission_signals', {
+  submissionId: text('submission_id').primaryKey(),
+  observerId: text('observer_id').notNull(),
+  pollingUnitId: text('polling_unit_id').notNull(),
+  ipHash: text('ip_hash').notNull(),
+  deviceHash: text('device_hash'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

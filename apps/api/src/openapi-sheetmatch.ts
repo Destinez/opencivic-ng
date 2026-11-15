@@ -9,6 +9,74 @@ const result = {
 const id = [{ name: 'id', in: 'path', required: true, schema: { type: 'string', maxLength: 160 } }];
 
 export const sheetMatchPaths = {
+  '/v1/admin/observers': {
+    get: {
+      tags: ['Authenticated'],
+      summary: 'List observer trust, counts and freezes for admins',
+      security: auth,
+      responses: result,
+    },
+  },
+  '/v1/admin/observers/{id}/trust': {
+    post: {
+      tags: ['Authenticated'],
+      summary: 'Document an admin trust or accreditation decision',
+      parameters: id,
+      security: auth,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['trustLevel', 'frozen', 'note'],
+              properties: {
+                trustLevel: { type: 'integer', minimum: 0, maximum: 3 },
+                frozen: { type: 'boolean' },
+                accreditationRef: { type: 'string', nullable: true, maxLength: 160 },
+                homeStateId: { type: 'string', nullable: true },
+                note: { type: 'string', minLength: 8, maxLength: 500 },
+              },
+            },
+          },
+        },
+      },
+      responses: result,
+    },
+  },
+  '/v1/admin/abuse': {
+    get: {
+      tags: ['Authenticated'],
+      summary:
+        'Review duplicate-image and shared connection/device signals from the last thirty days',
+      security: auth,
+      responses: result,
+    },
+  },
+  '/v1/admin/elections/{id}/config': {
+    post: {
+      tags: ['Authenticated'],
+      summary: 'Change the election submission switch with an audit note',
+      parameters: id,
+      security: auth,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['acceptsSubmissions', 'note'],
+              properties: {
+                acceptsSubmissions: { type: 'boolean' },
+                note: { type: 'string', minLength: 8, maxLength: 500 },
+              },
+            },
+          },
+        },
+      },
+      responses: result,
+    },
+  },
   '/v1/cases': {
     get: {
       tags: ['Sheet Match'],

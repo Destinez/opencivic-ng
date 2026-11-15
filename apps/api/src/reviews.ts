@@ -15,6 +15,7 @@ import { parse, readJson, reject, requireRole } from './http';
 import { listSubmissions, recordAudit } from './queries';
 import { presentReference } from './references';
 import { identifierSchema, queryValues, reviewQuerySchema } from './request-validation';
+import { refreshTrust } from './trust';
 
 export async function expireClaims(db: AppDb, id?: string) {
   const expired = await db
@@ -245,6 +246,12 @@ export function mountReviewRoutes(app: Hono<AppEnv>, deps: AppDeps) {
           needed,
         },
       });
+      if (row.observerId)
+        await refreshTrust(
+          tx,
+          row.observerId,
+          input.decision === 'rejected' && input.reasonCode === 'fabrication',
+        );
       await recomputeSheetMatch(tx, row.electionId, row.pollingUnitId);
       return { id, status, approvals, approvalsRequired: needed };
     });
