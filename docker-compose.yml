@@ -43,6 +43,8 @@ services:
     environment:
       API_INTERNAL_URL: http://api:4000
       NEXT_PUBLIC_API_URL: http://localhost:4000
+      PRIVACY_CONTROLLER_NAME: ${PRIVACY_CONTROLLER_NAME:-Obaro Destiny Udurie — personal demo project}
+      PRIVACY_CONTACT_EMAIL: ${PRIVACY_CONTACT_EMAIL:-obarodestinez@gmail.com}
     ports:
       - "3000:3000"
     depends_on:

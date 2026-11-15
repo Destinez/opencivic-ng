@@ -10,3 +10,6 @@ coverage
 docs/screenshots
 **/*.test.ts
 e2e
+
+**/node_modules
+**/.*

@@ -22,7 +22,10 @@
     "db:seed": "pnpm --filter @opencivic/db seed",
     "db:clear-sample": "pnpm --filter @opencivic/db clear-sample",
     "import:inec": "pnpm --filter @opencivic/db import:inec",
-    "privacy:retain": "pnpm --filter @opencivic/api exec tsx ../../scripts/retention.mts"
+    "privacy:retain": "pnpm --filter @opencivic/api exec tsx ../../scripts/retention.mts",
+    "demo:sheetmatch": "node scripts/demo-sheetmatch.mjs",
+    "demo:captures": "SEED_SHEETMATCH_DEMO=true playwright test --project=demo",
+    "demo:gif": "pnpm --filter @opencivic/api exec tsx src/demo-gif.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["@biomejs/biome", "esbuild"]

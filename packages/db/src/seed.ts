@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { consistencyWarnings, emptyVotes } from '@opencivic/shared';
 import { eq, inArray } from 'drizzle-orm';
@@ -135,6 +135,9 @@ export async function seedDatabase(
   mkdirSync(options.uploadDir, { recursive: true });
   const placeholderPath = join(options.uploadDir, 'sample-sheet-placeholder.png');
   writeFileSync(placeholderPath, sampleSheetPng());
+  const referencePath = join(options.uploadDir, 'sample-reference-sheet.png');
+  const referenceImage = readFileSync(new URL('../fixtures/demo-reference.png', import.meta.url));
+  writeFileSync(referencePath, referenceImage);
   await db
     .insert(observerProfiles)
     .values({
@@ -152,8 +155,8 @@ export async function seedDatabase(
       source: 'sample',
       sourceUrl: 'https://example.com/sample-reference/ikeja-gra',
       retrievedAt: new Date('2027-02-20T15:00:00Z'),
-      imagePath: placeholderPath,
-      imageSha256: createHash('sha256').update(sampleSheetPng()).digest('hex'),
+      imagePath: referencePath,
+      imageSha256: createHash('sha256').update(referenceImage).digest('hex'),
       accreditedVoters: 120,
       rejectedBallots: 2,
       partyVotes: { ...emptyVotes(), APC: 142 },

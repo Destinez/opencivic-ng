@@ -23,6 +23,15 @@ const handle = await openDatabase(databaseUrl);
 const uploadDir = `./.data/e2e-uploads-${schema}`;
 await migrateDatabase(handle.exec);
 await seedDatabase(handle.db, { uploadDir });
+if (process.env.SEED_SHEETMATCH_DEMO === 'true') {
+  const { seedSheetMatchDemo } = await import('./demo');
+  await seedSheetMatchDemo({
+    db: handle.db,
+    uploadDir,
+    webOrigins: ['http://localhost:3000'],
+    cookieSecure: false,
+  });
+}
 // Quotas are covered by API tests; each browser run has an isolated database.
 const app = createApp({
   db: handle.db,

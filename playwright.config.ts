@@ -18,7 +18,12 @@ export default defineConfig({
       : {}),
   },
   projects: [
-    { name: 'smoke', testIgnore: /screenshots\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'demo', testMatch: /sheetmatch-demo\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'smoke',
+      testIgnore: /(?:screenshots|sheetmatch-demo)\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
     {
       name: 'screenshots',
       testMatch: /screenshots\.spec\.ts/,
@@ -36,6 +41,7 @@ export default defineConfig({
         DATABASE_URL: databaseUrl,
         E2E_SCHEMA: `e2e_${process.env.E2E_RUN_ID}`,
         SEED_ON_BOOT: 'true',
+        SEED_SHEETMATCH_DEMO: process.env.SEED_SHEETMATCH_DEMO ?? 'false',
         WEB_ORIGINS: 'http://localhost:3000',
         UPLOAD_DIR: './.data/uploads',
         PORT: '4000',

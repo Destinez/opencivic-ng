@@ -1,210 +1,184 @@
-# OpenCivic NG
+# OpenCivic NG — Sheet Match
 
-Unofficial civic tools for Nigerian elections: look up a polling unit, read sourced guidance, and publish a crowdsourced tally only after a second person has reviewed it.
+Find a polling unit, file the figures on a result sheet, and compare them with a manually attached reference. Independently checked document differences appear on a discrepancy board with downloadable evidence packs.
 
-OpenCivic is not the Independent National Electoral Commission. It does not announce official results and it does not declare a winner. The geography shipped in the repo is **sample data** for Lagos and Edo. Sample codes start with `SAMPLE/`. Nothing in that set is an official polling unit.
+**OpenCivic is unofficial.** It is not the Independent National Electoral Commission, does not announce official results and does not declare a winner. INEC alone declares results. All shipped polling units and result documents are fictional samples; codes start with `SAMPLE/`. Sourced voting guidance is separate from the fictional demonstration poll.
 
 Built by Obaro Destiny Udurie.
 
-![CI](https://github.com/Destinez/opencivic-ng/actions/workflows/ci.yml/badge.svg)
+## Try the demo
 
-## What you can do
-
-1. **Find a polling unit** by searching or browsing state, local government, ward, and unit. A map (Leaflet, OpenStreetMap tiles) draws pins for the current ward or search, not for a whole state.
-2. **Read election guidance.** The 2027 dates are copied from [INEC’s election calendar](https://inecnigeria.org/elections/calendar). Voting steps are copied from [INEC’s voter-education page](https://inecnigeria.org/voters/education). PVC collection logistics are marked **Unverified**.
-3. **File an observation** on the fictional demonstration poll: accredited voters, party figures, rejected ballots, and an optional photo of the result sheet. A reviewer who did not file it approves or flags it. The public tally uses the newest approved sheet per unit.
-4. **Call a small HTTP API** documented at `/v1/openapi.json` and on the in-app API page.
-
-To find the unit printed on a real PVC, use [INEC’s portal](https://cvr.inecnigeria.org/pu). This app only searches the dataset you loaded.
-
-## Screenshots
-
-Sample data, desktop and a phone-sized viewport.
-
-| | Desktop | Phone |
-| --- | --- | --- |
-| Lookup | ![Lookup on a desktop](docs/screenshots/lookup-desktop.png) | ![Lookup on a phone](docs/screenshots/lookup-mobile.png) |
-| Map | ![Map on a desktop](docs/screenshots/map-desktop.png) | ![Map on a phone](docs/screenshots/map-mobile.png) |
-| Election guidance | ![Election guidance on a desktop](docs/screenshots/election-desktop.png) | ![Election guidance on a phone](docs/screenshots/election-mobile.png) |
-| File an observation | ![Observation form on a desktop](docs/screenshots/submit-desktop.png) | ![Observation form on a phone](docs/screenshots/submit-mobile.png) |
-| Review queue | ![Review queue on a desktop](docs/screenshots/review-desktop.png) | ![Review queue on a phone](docs/screenshots/review-mobile.png) |
-| Unofficial tally | ![Tally on a desktop](docs/screenshots/aggregate-desktop.png) | ![Tally on a phone](docs/screenshots/aggregate-mobile.png) |
-
-## Run it
-
-Node 22 and pnpm 10. Docker is the path that matches production-shaped Postgres. Without Docker, the API falls back to an embedded Postgres-compatible database so the UI can still be tried.
-
-### Docker Compose
+Install Node 22 and pnpm 10.33.4, and start Docker. From the repository root:
 
 ```bash
-docker compose up --build
+docker compose up --build -d
+pnpm demo:sheetmatch
 ```
 
-- Web: http://localhost:3000
-- API: http://localhost:4000
-- API docs: http://localhost:4000/docs
-- OpenAPI: http://localhost:4000/v1/openapi.json
+Open http://localhost:3000/cases. The command seeds the fictional poll, a manually cited sample reference, an independently reviewed case at Anifowoshe and a hash-sealed evidence pack. Repeating the command reuses that case. It detects a running Compose API and runs the seed inside its photo volume; when no Compose API is running it uses the local database configured through environment variables.
 
-The API waits for Postgres, applies `packages/db/migrations/0001_init.sql`, and seeds the sample dataset. Restarting does not duplicate observations.
+API: http://localhost:4000. Interactive documentation: http://localhost:4000/docs. OpenAPI: http://localhost:4000/v1/openapi.json.
 
-### Without Docker
+The ready case leaves Ikeja GRA sample unit 3 available for the two-minute walkthrough:
+
+1. Search **Ikeja GRA**. Check the SAMPLE notice; this is not an official polling unit.
+2. Sign in as the observer. Download the [fictional observer sheet](apps/web/public/samples/observer-sheet.png), open **Report**, choose Ikeja GRA sample unit 3 and enter accredited **120**, rejected **2**, APC **112**, all other party figures **0**. The fictional capture date is 20 February 2027. Attach the sample image.
+3. After the page has loaded online, switch the browser offline and save. The phone says **Saved on phone**. Reloading preserves the draft. Reconnect and it becomes **Sent ✓** without a duplicate.
+4. Sign in as the first reviewer, open the sheet and claim it. The seeded SAMPLE reference shows APC **142** and total accounted ballots **144**, above accreditation **120**. Mark **Discrepancy likely**, provide a document-based note, open a case and start investigation.
+5. The second reviewer verifies the reference transcription, opens the case and independently confirms it. Confirmation publishes immediately.
+6. Sign in as desk, filter the board by Lagos and Ikeja, open the case and download its evidence pack. The public tally remains unofficial and names no winner.
+
+Demo accounts use public passwords and example.com addresses:
+
+- Observer: `ada.okonkwo@example.com` / `observer-demo-pass`
+- Reviewer: `chidi.bello@example.com` / `reviewer-demo-pass`
+- Second reviewer: `zainab.ali@example.com` / `reviewer-two-demo-pass`
+- Desk: `femi.adeyemi@example.com` / `desk-demo-pass`
+- Admin: `amina.yusuf@example.com` / `admin-demo-pass`
+
+Do not expose these defaults on a public hostname. The demo remains fictional; a real-election pilot requires a partner controller and legal review. Account deletion is supported; a deleted demo account requires a fresh demo database rather than silently restoring its identity.
+
+## Demo captures
+
+![Sheet Match walkthrough](docs/screenshots/sheetmatch-demo.gif)
+
+![Discrepancy board with sample map pins](docs/screenshots/sheetmatch-board-desktop.png)
+
+![Two fictional documents and their field comparison](docs/screenshots/sheetmatch-case-desktop.png)
+
+[Phone outbox](docs/screenshots/sheetmatch-offline-mobile.png), [sent receipt](docs/screenshots/sheetmatch-sent-mobile.png), [phone case](docs/screenshots/sheetmatch-case-mobile.png) and [phone board](docs/screenshots/sheetmatch-board-mobile.png) show the same sample flow. Earlier lookup, guidance and tally captures remain in `docs/screenshots`.
+
+To regenerate the Sheet Match captures after a web build:
 
 ```bash
-pnpm install
+pnpm demo:captures
+pnpm demo:gif # requires ffmpeg
+```
+
+If bundled Chromium cannot launch, set `PLAYWRIGHT_CHROME_PATH` to the installed Chrome executable. On macOS:
+
+```bash
+PLAYWRIGHT_CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' pnpm e2e
+```
+
+## Local development
+
+```bash
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-`pnpm dev` uses `pglite:./.data/opencivic` and seeds on boot. For a real Postgres, start only the database and point the API at it:
+The API defaults to PGlite at `apps/api/.data/opencivic`, applies all numbered migrations and seeds fictional data. The photo store is outside the web root. `pnpm demo:sheetmatch` prepares the full case in the same local store. Both apps run at ports 3000 and 4000.
+
+For Postgres with apps running on the host:
 
 ```bash
-docker compose up db
-DATABASE_URL=postgres://opencivic:opencivic@localhost:5432/opencivic \
-  SEED_ON_BOOT=true \
-  pnpm --filter @opencivic/api dev
+docker compose up -d db
+DATABASE_URL=postgres://opencivic:opencivic@localhost:5432/opencivic SEED_ON_BOOT=true pnpm --filter @opencivic/api dev
 ```
 
-In another shell, `pnpm --filter @opencivic/web dev`.
+In another terminal, run `pnpm --filter @opencivic/web dev`. Use the same `DATABASE_URL` and `UPLOAD_DIR` with the demo, migration, retention and audit commands. `.env.example` contains placeholders; supply real configuration through environment variables.
 
-### Demo accounts
-
-These passwords are public. They exist so the review flow can be tried. Do not expose them on the internet. Override them with `SEED_OBSERVER_PASSWORD`, `SEED_REVIEWER_PASSWORD`, and `SEED_ADMIN_PASSWORD` before any shared deployment, and set `SEED_ON_BOOT=false` once you have real accounts.
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Observer | ada.okonkwo@example.com | observer-demo-pass |
-| Reviewer | chidi.bello@example.com | reviewer-demo-pass |
-| Admin | amina.yusuf@example.com | admin-demo-pass |
-
-Signing in on a second browser does not sign the first one out. Deleting an account replaces the name and email, ends sessions, and leaves the audit log in place without the email address.
-
-## Architecture
+## How Sheet Match works
 
 ```mermaid
-flowchart TB
-  browser[Phone or desktop browser]
-  web[Next.js server and pages]
-  proxy["Same-origin /backend proxy"]
-  api[Hono API]
-  db[(Postgres)]
-  files[Sheet photos on disk]
-  osm[OpenStreetMap tiles]
-
-  browser --> web
-  browser --> proxy
-  browser --> osm
-  web --> api
-  proxy --> api
-  api --> db
-  api --> files
+sequenceDiagram
+  participant Phone as Observer phone
+  participant API as API
+  participant DB as Postgres
+  participant First as First reviewer
+  participant Second as Second reviewer
+  participant Desk as Public / desk
+  Phone->>Phone: Save UUID, figures and compressed photo offline
+  Phone->>API: Send figures with clientId
+  API->>DB: Insert once, record server receipt time
+  Phone->>API: Upload photo separately with retries
+  API->>DB: Strip metadata, hash image, recompute flags
+  First->>API: Claim sheet, attach reference, record decision
+  Second->>API: Verify reference transcription
+  First->>API: Open case and investigate
+  Second->>API: Independently confirm current evidence
+  API->>DB: Audit confirmation and publish atomically
+  Desk->>API: Filter board and inspect provenance
+  Desk->>API: Download versioned ZIP and SHA-256 manifest
 ```
 
-| Piece | Role |
-| --- | --- |
-| `apps/web` | Mobile-first Next.js UI. Public pages are server-rendered. The browser talks to `/backend`, which proxies to the API at runtime, so the session cookie stays on the site origin. |
-| `apps/api` | Hono HTTP API. Public reads for geography, elections, and approved aggregates. Cookie sessions for everything else. |
-| `packages/db` | Drizzle schema, SQL migration, sample seed, and the CSV importer. |
-| `packages/shared` | Party list, Zod validation, and the rollup used by the API and the unit tests. |
+The TypeScript monorepo contains `apps/web` (Next.js), `apps/api` (Hono), `packages/db` (Drizzle, Postgres/PGlite, migrations and seeds) and `packages/shared` (validation and pure comparison rules). Browser requests use a same-origin `/backend` proxy with an HttpOnly session cookie.
 
-The audit table has a trigger that raises on `UPDATE` and `DELETE`. Decisions are new rows, not edits. A reviewer cannot decide a sheet they filed. Approving a second time is rejected. If two approved sheets exist for one unit, the newer one is the one that counts, which is why the seed includes an older Ikeja sheet of 1 accredited voter that does not appear in the Lagos total.
+The observer route uses system fonts, no map, a cached shell and IndexedDB drafts scoped to the account. Images are resized to a 1,600-pixel long edge at quality 0.7, then the server removes metadata again. Sync sends figures first, retries photos with backoff and resumes online; background sync is used where supported. The JavaScript budget is 200 KiB gzip including the worker.
 
-Party rows are alphabetical by code, drawn in one colour. The list is a data-entry convenience, not a ballot paper and not a ranking. The bar repeats the number. The page does not name a winner.
+Cross-checks cover party scores, accredited figures, overvotes, arithmetic, registered-voter plausibility, observer conflicts and reused images. A difference of at least ten votes or five percent is critical. Duplicate images are private abuse signals and cannot support public cases.
 
-Coverage is “of the polling units in this database”. The sample is 36 units. It is not the national list.
+Review claims last ten minutes. L0 sheets need two independent approvals; after three approved sheets without a rejection an observer reaches L1. Admins verify accreditation for higher levels. Fabrication rejection freezes submissions at L0 until an admin documents a review. Shared address/device signals use hashes with 30-day retention; shared connections can be legitimate. ASN values are not inferred from untrusted forwarding headers.
 
-Photos are JPEG, PNG, or WebP, at most 2 MB, checked by magic bytes, and stored outside the web root. The tally does not embed them. A seeded pending sheet uses a generated placeholder image and says so.
+Published cases preserve immutable evidence snapshots, two-person decisions, pseudonyms and an append-only hash-chained audit. Retraction requires two different admins and a public note. SQL aggregates select the newest approved sheet by server receipt time per unit; reporting coverage concerns only the polling units loaded here. Party rows are alphabetical and do not project results.
 
-## Trade-offs
+## Evidence and API
 
-- **Sample poll vs the real 2027 elections.** INEC’s calendar, as read for this dataset, lists a presidential and National Assembly election on 16 January 2027 and a governorship and House of Assembly election on 6 February 2027. Those pages are information only. Seeded numbers are attached to a fictional poll so a practice tally cannot be mistaken for a real one. `accepts_submissions` is the switch for a later deployment.
-- **Newest approved sheet wins.** Keeping every approved sheet visible would double-count. Replacing the old row would hide history. The public number uses the latest approval; the audit log keeps both.
-- **In-memory rollup.** Fine for a state extract and for the sample. A full national file wants the sum done in SQL. Search is `ILIKE` without `pg_trgm` for the same reason: one migration has to run on Postgres and on the embedded database used in unit tests.
-- **Embedded database in tests and in `pnpm dev`.** CI’s browser run uses Postgres 16. Unit and API tests use PGlite so they do not need Docker. The SQL file is the migration both of them apply.
-- **Session cookie through a proxy, not a token in `localStorage`.** The cookie is `HttpOnly` and `SameSite=Lax`. `COOKIE_SECURE` must be turned on behind HTTPS. Direct callers can still use the API port; CORS allows the configured web origins.
-- **Rate limits share Postgres counters.** API instances use the same quotas. An edge limit is still needed for connections and traffic before requests reach the application.
-- **Every page is dynamic.** The web build does not need a database. The cost is that the homepage is not cached as a static file.
-- **English only.** The first audience is a phone on a slow network, so the map stays unloaded until a wide screen or an explicit “Show map”, and the lookup list is a normal form and links.
-- **No live INEC feed, no USSD, no offline sync.** Import is a CSV you prepare. Official coordinates are often missing from published lists; leave latitude and longitude blank and the UI says the pin is missing.
+Public cases have no account requirement or embargo. Desk can read non-draft unpublished cases without observer identities; reviewers and admins can also inspect drafts. Boards filter election, state, LGA, severity and status using keyset pagination. The map clusters nearby pins and always has an equivalent list.
 
-## Import an INEC list
-
-INEC publishes polling-unit lists and a lookup at [cvr.inecnigeria.org/pu](https://cvr.inecnigeria.org/pu). This repo does not download that list. Formats change, and you should confirm you are allowed to reuse a given file.
-
-1. Save the extract as UTF-8 CSV with this header (see `packages/db/fixtures/inec-import-template.csv`):
-
-```text
-state_code,state_name,lga_code,lga_name,ward_code,ward_name,pu_code,pu_name,address,latitude,longitude,registered_voters
-```
-
-2. Delete the `EXAMPLE-` row. Rows whose unit code starts with `EXAMPLE` are skipped.
-3. Import:
+An evidence ZIP contains `case.json`, both sheet images, `provenance.json`, `audit.json`, `manifest.json`, `SHA256SUMS` and `DISCLAIMER.txt`. Provenance includes source URLs, retrieval times, hashes and pseudonymous transcription/review decisions. `X-Content-SHA256` hashes the full ZIP. Retractions produce a new version. Verify the extracted files with:
 
 ```bash
-pnpm import:inec ./your-polling-units.csv
+shasum -a 256 -c SHA256SUMS
 ```
 
-Imported rows are stored separately from the sample (`dataset = imported`). The UI says to confirm them against the current INEC list. They are still not presented as an official OpenCivic publication.
+Every JSON API response carries `official: false`, a disclaimer and request ID. OpenAPI is checked against all router methods. New routes cover submissions/retry photos, review claims, reference create/verify, cases/transitions/comments/history, polling-unit case counts, evidence ZIPs and images, admin trust/abuse/config, personal export and purpose consent. Public reads retain geography, sourced guidance and unofficial aggregates.
 
-Remove the sample when you no longer want it mixed in:
+Quotas are shared through Postgres: public requests 120/minute per connection, register 5/hour per address, sign-in 10/15 minutes per address+email, submissions 10/hour and 3/unit per observer/election, references 60/hour per reviewer. Idempotent submission retries do not consume another slot. Forwarding headers are ignored; the web proxy shares a connection quota, so a real deployment needs an appropriate edge limit.
+
+Counts are bounded, capture times must fit election day ±24 hours, and the server enforces the election submission switch. Uploads accept a single JPEG, PNG or WebP up to 2 MB. Photos remain outside the web root; only independently confirmed case evidence becomes public.
+
+## Privacy and operations
+
+The [privacy notice](apps/web/app/privacy/page.tsx), [DPIA](docs/DPIA.md) and [incident runbook](docs/INCIDENT.md) describe minimisation, consent, observer retaliation risks and NDPA obligations, including notifying the NDPC within 72 hours where required.
+
+Configure `PRIVACY_CONTROLLER_NAME` and `PRIVACY_CONTACT_EMAIL`. The default identifies Obaro Destiny Udurie's personal demo project. Account offers a ZIP export, evidence-consent withdrawal/restoration and deletion. Unpublished observations and archives are removed; published evidence is retained without account identity. Phone drafts are cleared on withdrawal/deletion. Passwords and session tokens are never exported.
+
+Run these daily with the same database and photo store as the API:
 
 ```bash
-pnpm db:clear-sample
+pnpm privacy:retain
+pnpm audit:verify
 ```
 
-That deletes sample geography and the observations attached to it. It does not delete the audit log, and it does not delete imported rows.
-
-## API
-
-Public reads:
-
-- `GET /v1/states`
-- `GET /v1/states/:stateId/lgas`
-- `GET /v1/lgas/:lgaId/wards`
-- `GET /v1/polling-units?q=&stateId=&lgaId=&wardId=&limit=&offset=`
-- `GET /v1/polling-units/:id`
-- `GET /v1/elections`
-- `GET /v1/elections/:slug`
-- `GET /v1/aggregates?election=&level=state|lga|ward&parentId=`
-
-Every geography and tally payload includes `official: false` and a disclaimer string. `parentId` is a state id when `level=lga`, and a local-government id when `level=ward`.
-
-Search text is 2–100 characters. IDs are at most 160 letters, digits, underscores, or hyphens; use the returned ID rather than a `SAMPLE/` code. Pagination accepts whole numbers: `limit=1..100` (default 20) and `offset=0..5000` (default 0). Unknown fields, repeated query parameters, and invalid values return `422`. Omit `parentId` for state aggregates; an unknown election or parent area returns `404`.
-
-Requests share a Postgres-backed fixed-window limit of **120 per minute per connection address**, before session lookup or body parsing. Sign-in also allows 10 attempts per 15 minutes per address and email; registration allows 5 per hour. Observers may send 10 new sheets per hour and 3 per polling unit per election. Retries do not consume another submission slot. Responses expose `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` (seconds); timed quotas include `Retry-After`. Health checks and CORS preflight are exempt. Expired counters are removed; keys are hashed. Forwarding headers are ignored, so callers behind the same web proxy share a quota. Configure an edge limit for a public deployment.
-
-JSON bodies are limited to 64 KiB. Multipart observations allow 2,100,000 bytes for the whole request, with a 2,000,000-byte photo limit. Oversized bodies return `413`; malformed JSON returns `400`; unsupported body types return `415`.
-
-Observations require a device-generated UUID `clientId` and ISO `capturedAt`. Send figures to `POST /v1/submissions` first, then a multipart `photo` to `POST /v1/submissions/:id/photo`. Identical retries return `200` and the original ID. Photos are re-encoded to remove EXIF/GPS and receive SHA-256 and perceptual hashes. Counts cannot exceed 200,000, and accredited voters cannot exceed the unit’s loaded register count. Capture times allow 24 hours on either side of the election day; the fictional demo uses its sample sheet date. Server receipt time is stored independently.
-
-Authenticated routes (cookie `oc_session`) cover registration, observations, review, account deletion, and the admin audit log. They are in the same OpenAPI document.
+Raw observer/reference photos expire 180 days after the election unless retained in published or retracted cases. Connection/device signals expire after 30 days. File deletion uses a durable queue so interrupted runs can retry. With Compose, execute the retention script inside the API container:
 
 ```bash
-curl 'http://localhost:4000/v1/polling-units?q=Ikeja'
+docker compose exec -T api pnpm exec tsx ../../scripts/retention.mts
 ```
 
-## Tests and CI
+Operators must provide TLS, encrypted photo volumes and backups, private database credentials, least-privilege roles and `COOKIE_SECURE=true`. Compose volumes alone do not provide encryption. Real-election deployment requires legal approval; the shipped data remains fictional. English ships with message keys reserved for Hausa, Yoruba, Igbo and Pidgin pending reviewed translations.
+
+## Geography and sources
+
+For the polling unit printed on a real PVC, use [INEC's portal](https://cvr.inecnigeria.org/pu). OpenCivic searches the dataset you load. The included sample contains 36 approximate locations in Lagos and Edo.
+
+The CSV importer accepts a file you supply after confirming reuse terms; it never downloads an INEC list. Use `packages/db/fixtures/inec-import-template.csv`, remove its EXAMPLE row, then run:
+
+```bash
+pnpm import:inec ./polling-units.csv
+```
+
+Imported units retain `dataset=imported` and a notice to confirm them against the current INEC list. `pnpm db:clear-sample` removes removable sample geography; published cases are preserved by database constraints. Do not run it on the prepared Sheet Match demo.
+
+INEC election-calendar and voter-education links remain on guidance pages; uncertain dates or logistics are labelled Unverified. Reference images are manually attached with citations. No automated IReV harvesting or reference importer is shipped.
+
+## Checks and decisions
 
 ```bash
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm check:budget
 pnpm exec playwright install chromium
 pnpm e2e
+pnpm demo:captures
 ```
 
-- Unit tests cover the rollup (latest sheet per unit, places with zero reports still listed) and form validation.
-- API tests run against PGlite: sample labelling, the seeded Lagos and Edo totals, role checks, a private photo, account deletion without writing the email into the audit log, and the append-only trigger.
-- Playwright loads the home page, a sample search, the 2027 guidance page, the tally, and the reviewer queue, and runs axe for serious and critical issues.
-- GitHub Actions runs lint, typecheck, unit tests, the production web build, and the browser smoke test against Postgres 16.
+Vitest covers pure comparison rules, retries, image metadata removal, trust, shared quotas, independent decisions, audit integrity, board access, evidence hashes, privacy and retention. Set `TEST_DATABASE_URL` to run API/schema checks against isolated Postgres schemas. Browser tests use isolated databases and cover offline reload/sync, slow connections, review/publication/downloads, admin controls, privacy, axe and 200% zoom.
 
-## Legal and product limits
-
-The Electoral Act 2022 is the statute. A copy hosted by PLAC is linked from the guidance page; the gazette controls if they differ. This README is not legal advice. Official results are announced by INEC.
-
-Personal data is a name, an email, a password hash, the observations that person files, and a session cookie. Consent is collected at registration. The privacy page points at the [Nigeria Data Protection Commission](https://ndpc.gov.ng/). The demo has no separate data controller. Do not upload voter registers or photographs of people.
-
-Guidance text was checked against INEC’s public pages while this dataset was written. If those pages change, the pages win. Blocks that could not be confirmed are marked unverified.
-
-## License
+CI runs lint, types, PGlite and Postgres tests, build, budget, browser checks and the scripted demo. [Milestone evidence](docs/MILESTONES.md) records completed checks. Decisions document [manual sourcing](docs/adr/0001-manual-reference-sourcing.md), [independent evidence review](docs/adr/0002-independent-evidence-decisions.md) and [newest approved observations](docs/adr/0003-newest-approved-observation.md).
 
 MIT. See [LICENSE](LICENSE).

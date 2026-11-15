@@ -10,6 +10,7 @@ COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY packages/db packages/db
 COPY apps/api apps/api
+COPY scripts scripts
 RUN mkdir -p /data/uploads && chown -R node:node /app /data
 USER node
 ENV NODE_ENV=production

@@ -348,6 +348,13 @@ export function SubmitForm({ initialUnitId }: { initialUnitId?: string }) {
             />
           </div>
         </fieldset>
+        {elections.find((election) => election.id === electionId)?.fictional && (
+          <p>
+            <a href="/samples/observer-sheet.png" download>
+              Download the fictional observer sheet for this demo
+            </a>
+          </p>
+        )}
         <div className="field">
           <label htmlFor="photo">Photo of the result sheet, optional</label>
           <input
