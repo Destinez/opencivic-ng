@@ -69,6 +69,24 @@ summary {
   padding: 0.5rem 0;
   font-weight: 650;
 }
+.case-pin {
+  border: 0;
+  background: transparent;
+}
+.case-pin span {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: var(--amber-ink);
+  color: white;
+  border: 3px solid white;
+  border-radius: 50%;
+  font-weight: 700;
+}
+.card[data-selected] {
+  outline: 3px solid var(--focus);
+}
 
 * {
   box-sizing: border-box;
@@ -448,6 +466,15 @@ input::placeholder {
   width: 100%;
   background: #e7e1d6;
   font: inherit;
+}
+.map-frame .leaflet-control-attribution a {
+  color: var(--link);
+  text-decoration: underline;
+}
+.map-frame .leaflet-control-zoom a {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
 }
 .oc-pin {
   background: transparent;

@@ -10,6 +10,49 @@ const id = [{ name: 'id', in: 'path', required: true, schema: { type: 'string', 
 
 export const sheetMatchPaths = {
   '/v1/cases': {
+    get: {
+      tags: ['Sheet Match'],
+      summary: 'Filter published cases or the desk’s non-draft queue',
+      description:
+        'No account or embargo for published/retracted records. Public status=published includes retracted cases. Desk can request all non-drafts; reviewers and admins can include drafts. Returns data and nextPageToken, ordered by server creation time and ID. Tokens preserve microseconds and are bound to filters and access. No observer identities.',
+      parameters: [
+        ...['election', 'state', 'lga'].map((name) => ({
+          name,
+          in: 'query',
+          schema: { type: 'string', maxLength: 160 },
+        })),
+        {
+          name: 'severity',
+          in: 'query',
+          schema: { type: 'string', enum: ['info', 'warn', 'critical'] },
+        },
+        {
+          name: 'status',
+          in: 'query',
+          schema: {
+            type: 'string',
+            default: 'published',
+            enum: [
+              'published',
+              'retracted',
+              'under_investigation',
+              'confirmed',
+              'open',
+              'explained',
+              'dismissed',
+              'all',
+            ],
+          },
+        },
+        { name: 'page_token', in: 'query', schema: { type: 'string', maxLength: 1000 } },
+        {
+          name: 'limit',
+          in: 'query',
+          schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+        },
+      ],
+      responses: result,
+    },
     post: {
       tags: ['Authenticated'],
       summary: 'Open a private case from current discrepancy flags',
@@ -56,6 +99,63 @@ export const sheetMatchPaths = {
       tags: ['Sheet Match'],
       summary: 'Case history with audit-chain anchors and pseudonymous actors',
       parameters: id,
+      responses: result,
+    },
+  },
+  '/v1/polling-units/{id}/sheetmatch': {
+    get: {
+      tags: ['Sheet Match'],
+      summary: 'Published cases and counts for a polling unit',
+      description:
+        'Only published or retracted cases contribute to counts. No private flags or observer identities are disclosed.',
+      parameters: [
+        ...id,
+        {
+          name: 'election',
+          in: 'query',
+          required: true,
+          schema: { type: 'string', description: 'Election ID or slug' },
+        },
+      ],
+      responses: result,
+    },
+  },
+  '/v1/cases/{id}/evidence-pack': {
+    get: {
+      tags: ['Sheet Match'],
+      summary: 'Download the current hash-sealed evidence ZIP',
+      description:
+        'Public for published and retracted cases; other readable cases require a reviewer, desk or admin session. Streams case.json, original case images, provenance.json, audit.json, manifest.json, SHA256SUMS and a disclaimer. Each archive is versioned; retractions produce a new version. Image hashes must match the saved case evidence.',
+      parameters: id,
+      responses: {
+        ...result,
+        '200': {
+          description: 'Evidence ZIP stream',
+          headers: {
+            'X-Content-SHA256': {
+              schema: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+              description: 'SHA-256 of the complete ZIP response body',
+            },
+          },
+          content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } },
+        },
+      },
+    },
+  },
+  '/v1/cases/{id}/images/{kind}/{recordId}': {
+    get: {
+      tags: ['Sheet Match'],
+      summary: 'Display a hash-verified image attached to a readable case',
+      parameters: [
+        ...id,
+        {
+          name: 'kind',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', enum: ['observer', 'reference'] },
+        },
+        { name: 'recordId', in: 'path', required: true, schema: { type: 'string' } },
+      ],
       responses: result,
     },
   },

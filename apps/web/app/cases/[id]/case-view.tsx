@@ -1,5 +1,6 @@
 'use client';
 
+import { SheetComparison } from '@/components/sheet-comparison';
 import { formatWhen } from '@/lib/format';
 import { jsonRequest, request } from '@/lib/request';
 import type { CaseRecord } from '@/lib/types';
@@ -73,6 +74,26 @@ export function CaseView({ id }: { id: string }) {
           </section>
           <section className="card outbox">
             <h2>Document differences</h2>
+            {[
+              ...new Map(
+                data.evidence.map((item) => [
+                  `${item.observation.id}:${item.reference?.id ?? ''}`,
+                  item,
+                ]),
+              ).values(),
+            ].map((item) => (
+              <SheetComparison
+                key={`${item.observation.id}:${item.reference?.id ?? ''}`}
+                observed={item.observation}
+                reference={item.reference ?? undefined}
+                observerImage={`/backend/v1/cases/${id}/images/observer/${item.observation.id}`}
+                referenceImage={
+                  item.reference
+                    ? `/backend/v1/cases/${id}/images/reference/${item.reference.id}`
+                    : undefined
+                }
+              />
+            ))}
             <ul>
               {data.evidence.map((item) => (
                 <li key={item.flag.id}>
@@ -84,6 +105,11 @@ export function CaseView({ id }: { id: string }) {
           </section>
           <section className="card outbox">
             <h2>Reference provenance</h2>
+            <p>
+              <a className="button" href={`/backend/v1/cases/${id}/evidence-pack`}>
+                Download evidence pack
+              </a>
+            </p>
             {references.length ? (
               references.map(
                 (reference) =>

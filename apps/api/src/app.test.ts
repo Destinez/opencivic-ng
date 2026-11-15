@@ -129,6 +129,18 @@ describe.sequential('OpenCivic API', () => {
     expect(body.paths['/v1/elections']).toBeTruthy();
     expect(body.paths['/v1/aggregates']).toBeTruthy();
     expect(body.info.description.toLowerCase()).toContain('not an official');
+    const documented = Object.entries(body.paths).flatMap(([path, methods]) =>
+      Object.keys(methods as object).map((method) => `${method.toUpperCase()} ${path}`),
+    );
+    const routes = app.routes
+      .filter(
+        (route) =>
+          route.method !== 'ALL' &&
+          (route.path.startsWith('/v1/') || route.path === '/health') &&
+          route.path !== '/v1/openapi.json',
+      )
+      .map((route) => `${route.method} ${route.path.replace(/:([^/]+)/g, '{$1}')}`);
+    expect(new Set(documented)).toEqual(new Set(routes));
     const docs = await app.request('/docs');
     expect(docs.status).toBe(200);
     expect(docs.headers.get('content-type')).toContain('text/html');

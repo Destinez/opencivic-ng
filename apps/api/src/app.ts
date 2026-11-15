@@ -15,7 +15,9 @@ import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
+import { mountBoardRoutes } from './board';
 import { mountCaseRoutes } from './cases';
+import { mountEvidenceRoutes } from './evidence';
 import { errorBody, readJson, validation } from './http';
 import { docsHtml, openApiDocument } from './openapi';
 import {
@@ -149,7 +151,13 @@ export function createApp(deps: AppDeps) {
       credentials: true,
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Content-Type', 'X-Observer-Id'],
-      exposeHeaders: ['Retry-After', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
+      exposeHeaders: [
+        'Retry-After',
+        'RateLimit-Limit',
+        'RateLimit-Remaining',
+        'RateLimit-Reset',
+        'X-Content-SHA256',
+      ],
       maxAge: 600,
     }),
   );
@@ -465,6 +473,8 @@ export function createApp(deps: AppDeps) {
 
   mountReviewRoutes(app, deps);
   mountCaseRoutes(app, deps);
+  mountBoardRoutes(app, deps);
+  mountEvidenceRoutes(app, deps);
   mountReferenceRoutes(app, deps, takeRequest);
 
   app.get('/v1/admin/audit', async (c) => {

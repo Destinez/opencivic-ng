@@ -1,4 +1,5 @@
 import { MapToggle } from '@/components/map-toggle';
+import { UnitCases } from '@/components/unit-cases';
 import { ApiError, apiGet } from '@/lib/api';
 import type { AreaRow, PollingUnit, StateRow } from '@/lib/types';
 import type { Metadata } from 'next';
@@ -129,6 +130,7 @@ export default async function LookupPage({
               ) : null}
             </ol>
             {selected ? <UnitDetail unit={selected.data} /> : null}
+            {selected ? <UnitCases unitId={selected.data.id} /> : null}
             {search ? (
               <>
                 <h2>{search.total} matches</h2>

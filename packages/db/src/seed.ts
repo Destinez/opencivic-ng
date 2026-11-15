@@ -188,6 +188,7 @@ export async function seedDatabase(
         decidedBy: submission.status === 'pending' ? null : people.reviewer.id,
         decidedAt: submission.decidedAt ? new Date(submission.decidedAt) : null,
         createdAt: new Date(submission.createdAt),
+        receivedAt: new Date(submission.createdAt),
       })
       .onConflictDoNothing()
       .returning({ id: submissions.id });

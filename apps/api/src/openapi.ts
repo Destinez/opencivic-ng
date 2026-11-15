@@ -328,6 +328,14 @@ export function openApiDocument() {
           },
         },
       },
+      '/v1/admin/users': {
+        get: {
+          tags: ['Authenticated'],
+          summary: 'List active accounts for admins',
+          security: [{ sessionCookie: [] }],
+          responses: { '200': { description: 'Accounts' }, '403': { description: 'Admin only' } },
+        },
+      },
       '/v1/admin/audit': {
         get: {
           tags: ['Authenticated'],

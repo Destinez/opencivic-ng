@@ -32,6 +32,7 @@ describe('Sheet Match schema', () => {
       { name: '0001_init.sql' },
       { name: '0002_sheet_match.sql' },
       { name: '0003_case_evidence.sql' },
+      { name: '0004_query_indexes.sql' },
     ]);
     const events = await handle.db.execute(
       sql`SELECT hash, prev_hash FROM audit_events ORDER BY id`,

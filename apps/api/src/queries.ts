@@ -18,11 +18,11 @@ import {
   DATASET_DISCLAIMER,
   type DatasetKind,
   type GeoLevel,
+  PARTY_CODES,
   RESULTS_DISCLAIMER,
   coordinateNotice,
   datasetNotice,
   normalizeVotes,
-  rollup,
 } from '@opencivic/shared';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 
@@ -384,36 +384,44 @@ export async function aggregateElection(
       .where(eq(parentTable.id, parentId ?? ''));
     if (!parents[0]) return { missing: true };
   }
-  const locations = await db
-    .select({
-      pollingUnitId: pollingUnits.id,
-      stateId: states.id,
-      stateName: states.name,
-      lgaId: lgas.id,
-      lgaName: lgas.name,
-      wardId: wards.id,
-      wardName: wards.name,
-    })
-    .from(pollingUnits)
-    .innerJoin(wards, eq(wards.id, pollingUnits.wardId))
-    .innerJoin(lgas, eq(lgas.id, wards.lgaId))
-    .innerJoin(states, eq(states.id, lgas.stateId));
-  const approved = await db
-    .select()
-    .from(submissions)
-    .where(and(eq(submissions.electionId, election.id), eq(submissions.status, 'approved')));
-  const rows = rollup({
-    locations,
-    approved: approved.map((row) => ({
-      pollingUnitId: row.pollingUnitId,
-      createdAt: row.createdAt.toISOString(),
-      accreditedVoters: row.accreditedVoters,
-      rejectedBallots: row.rejectedBallots,
-      votes: normalizeVotes(row.partyVotes),
-    })),
-    level,
-    parentId,
-  });
+  const groupId = level === 'state' ? states.id : level === 'lga' ? lgas.id : wards.id;
+  const groupName = level === 'state' ? states.name : level === 'lga' ? lgas.name : wards.name;
+  const parent =
+    level === 'state' ? sql`NULL::text` : level === 'lga' ? sql`${states.id}` : sql`${lgas.id}`;
+  const scope =
+    level === 'state'
+      ? sql`true`
+      : level === 'lga'
+        ? sql`${states.id} = ${parentId}`
+        : sql`${lgas.id} = ${parentId}`;
+  const votes = sql.join(
+    [...PARTY_CODES, 'others'].flatMap((party) => [
+      sql`${party}::text`,
+      sql`coalesce(sum((newest.party_votes ->> ${party})::bigint), 0)`,
+    ]),
+    sql`, `,
+  );
+  const result = await db.execute(sql`
+    WITH newest AS (
+      SELECT DISTINCT ON (polling_unit_id) polling_unit_id, accredited_voters, rejected_ballots, party_votes
+      FROM submissions WHERE election_id = ${election.id} AND status = 'approved'
+      ORDER BY polling_unit_id, received_at DESC, id DESC
+    )
+    SELECT ${groupId} AS id, ${groupName} AS name, ${parent} AS "parentId",
+      count(*)::int AS "pollingUnitsTotal", count(newest.polling_unit_id)::int AS "pollingUnitsReporting",
+      coalesce(sum(newest.accredited_voters), 0)::float8 AS "accreditedVoters",
+      coalesce(sum(newest.rejected_ballots), 0)::float8 AS "rejectedBallots",
+      jsonb_build_object(${votes}) AS votes
+    FROM ${pollingUnits}
+    JOIN ${wards} ON ${wards.id} = ${pollingUnits.wardId}
+    JOIN ${lgas} ON ${lgas.id} = ${wards.lgaId}
+    JOIN ${states} ON ${states.id} = ${lgas.stateId}
+    LEFT JOIN newest ON newest.polling_unit_id = ${pollingUnits.id}
+    WHERE ${scope}
+    GROUP BY ${groupId}, ${groupName}, ${parent}
+    ORDER BY ${groupName}, ${groupId}
+  `);
+  const rows = result.rows as unknown as AggregateRow[];
   return {
     missing: false,
     election: {

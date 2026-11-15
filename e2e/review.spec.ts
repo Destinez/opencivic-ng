@@ -83,4 +83,26 @@ test('reviewers claim, compare and independently verify a sample reference', asy
   expect(
     published.violations.filter((issue) => ['serious', 'critical'].includes(issue.impact ?? '')),
   ).toEqual([]);
+  await expect(
+    page.getByRole('img', { name: 'Result sheet supplied by the observer' }),
+  ).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Download evidence pack' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^case-.+-v1\.zip$/);
+  expect(await download.failure()).toBeNull();
+  await page.request.post('/backend/v1/auth/login', {
+    data: { email: 'femi.adeyemi@example.com', password: 'desk-demo-pass' },
+  });
+  await page.goto('/cases');
+  await page.getByLabel('State', { exact: true }).selectOption('sample-state-lagos');
+  await page.getByLabel('Local government area').selectOption('sample-lga-lagos-ikeja');
+  await page.getByLabel('Case status').selectOption('all');
+  await expect(page.locator(`a.button[href="${new URL(caseUrl).pathname}"]`)).toBeVisible();
+  await page.getByRole('button', { name: 'Show case map' }).click();
+  await expect(page.locator('.case-pin').first()).toBeVisible();
+  const board = await new AxeBuilder({ page }).analyze();
+  expect(
+    board.violations.filter((issue) => ['serious', 'critical'].includes(issue.impact ?? '')),
+  ).toEqual([]);
 });

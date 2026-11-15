@@ -13,3 +13,5 @@ uploads
 npm-debug.log
 pnpm-debug.log
 apps/web/public/sw.js
+
+.pnpm-store

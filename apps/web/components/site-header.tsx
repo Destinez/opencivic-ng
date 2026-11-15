@@ -7,6 +7,7 @@ const links = [
   { href: '/lookup', label: 'Polling units' },
   { href: '/elections', label: 'Elections' },
   { href: '/results', label: 'Tallies', exact: true },
+  { href: '/cases', label: 'Sheet Match' },
   { href: '/results/new', label: 'Report' },
   { href: '/review', label: 'Review' },
   { href: '/account', label: 'Account' },
